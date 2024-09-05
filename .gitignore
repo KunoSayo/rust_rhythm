@@ -1,0 +1,10 @@
+# Project exclude paths
+/target/
+.idea
+*.iml
+
+sign
+*.bat
+
+misc
+res
