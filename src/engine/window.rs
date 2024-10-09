@@ -3,8 +3,8 @@ use std::collections::HashSet;
 use std::default::Default;
 use std::ops::DerefMut;
 
-use egui::Context;
 use egui::epaint::ahash::{HashMap, HashMapExt};
+use egui::Context;
 use egui_wgpu::ScreenDescriptor;
 use log::info;
 use specs::World;
@@ -16,8 +16,8 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, DeviceEvents, EventLoop, E
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowAttributes, WindowId};
 
-use crate::engine::{GameState, GlobalData, LoopState, MainRendererData, Pointer, StateEvent, Trans, WgpuData};
 use crate::engine::app::AppInstance;
+use crate::engine::{GameState, GlobalData, LoopState, MainRendererData, Pointer, StateEvent, Trans, WgpuData};
 
 #[derive(Default)]
 struct LoopInfo {
@@ -204,71 +204,70 @@ impl WindowInstance {
                 gpu.queue.submit(Some(encoder.finish()));
             }
 
-            let egui_ctx = &self.app.egui.egui_ctx();
 
-            // let full_output = egui_ctx.run(self.app.egui.take_egui_input(&self.app.window), |egui_ctx| {
-            //     let mut state_data = get_state!(self.app, el);
-            //     state_data.dt = dt;
-            //
-            //
-            //     for game_state in &mut self.states {
-            //         game_state.shadow_render(&mut state_data, egui_ctx);
-            //     }
-            //     if let Some(g) = self.states.last_mut() {
-            //         let tran = g.render(&mut state_data, egui_ctx);
-            //         self.process_tran(tran, el);
-            //     }
-            // });
+            let full_output = self.app.egui_ctx.clone().run(self.app.egui.take_egui_input(&self.app.window), |egui_ctx| {
+                let mut state_data = get_state!(self.app, el);
+                state_data.dt = dt;
+
+
+                for game_state in &mut self.states {
+                    game_state.shadow_render(&mut state_data, egui_ctx);
+                }
+                if let Some(g) = self.states.last_mut() {
+                    let tran = g.render(&mut state_data, egui_ctx);
+                    self.process_tran(tran, el);
+                }
+            });
 
             let gpu = self.app.gpu.as_ref().unwrap();
             let render = self.app.render.as_mut().unwrap();
             // render ui output to main screen
-            // {
-            //     let device = gpu.device.as_ref();
-            //     let queue = gpu.queue.as_ref();
-            //     let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor {
-            //         label: Some("encoder for egui"),
-            //     });
-            //
-            //
-            //     let screen_descriptor = ScreenDescriptor {
-            //         size_in_pixels: [gpu.surface_cfg.width, gpu.surface_cfg.height],
-            //         pixels_per_point: self.app.window.scale_factor() as f32,
-            //     };
-            //     // Upload all resources for the GPU.
-            //
-            //     let egui_renderer = &mut render.egui_rpass;
-            //     let paint_jobs = self.app.egui.tessellate(full_output.shapes, 1);
-            //     for (id, delta) in &full_output.textures_delta.set {
-            //         egui_renderer.update_texture(device, queue, *id, &delta);
-            //     }
-            //     egui_renderer.update_buffers(&device, &queue, &mut encoder, &paint_jobs, &screen_descriptor);
-            //     {
-            //         let mut rp = encoder.begin_render_pass(&RenderPassDescriptor {
-            //             label: None,
-            //             color_attachments: &[Some(RenderPassColorAttachment {
-            //                 view: &gpu.views.get_screen().view,
-            //                 resolve_target: None,
-            //                 ops: Operations {
-            //                     load: LoadOp::Load,
-            //                     store: StoreOp::Store,
-            //                 },
-            //             })],
-            //             depth_stencil_attachment: None,
-            //             timestamp_writes: None,
-            //             occlusion_query_set: None,
-            //         });
-            //         egui_renderer.render(
-            //             &mut rp,
-            //             &paint_jobs,
-            //             &screen_descriptor,
-            //         );
-            //     }
-            //
-            //     // Submit the commands.
-            //     queue.submit(std::iter::once(encoder.finish()));
-            //     full_output.textures_delta.free.iter().for_each(|id| egui_renderer.free_texture(id));
-            // }
+            {
+                let device = gpu.device.as_ref();
+                let queue = gpu.queue.as_ref();
+                let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor {
+                    label: Some("encoder for egui"),
+                });
+
+
+                let screen_descriptor = ScreenDescriptor {
+                    size_in_pixels: [gpu.surface_cfg.width, gpu.surface_cfg.height],
+                    pixels_per_point: self.app.window.scale_factor() as f32,
+                };
+                // Upload all resources for the GPU.
+
+                let egui_renderer = &mut render.egui_rpass;
+                let paint_jobs = self.app.egui.egui_ctx()
+                    .tessellate(full_output.shapes, 1.0f32);
+                for (id, delta) in &full_output.textures_delta.set {
+                    egui_renderer.update_texture(device, queue, *id, &delta);
+                }
+                egui_renderer.update_buffers(&device, &queue, &mut encoder, &paint_jobs, &screen_descriptor);
+                {
+                    let mut rp = encoder.begin_render_pass(&RenderPassDescriptor {
+                        label: None,
+                        color_attachments: &[Some(RenderPassColorAttachment {
+                            view: &gpu.views.get_screen().view,
+                            resolve_target: None,
+                            ops: Operations {
+                                load: LoadOp::Load,
+                                store: StoreOp::Store,
+                            },
+                        })],
+                        depth_stencil_attachment: None,
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
+                    }).forget_lifetime();
+                    egui_renderer.render(
+                        &mut rp,
+                        &paint_jobs,
+                        &screen_descriptor,
+                    );
+                }
+                // Submit the commands.
+                queue.submit(std::iter::once(encoder.finish()));
+                full_output.textures_delta.free.iter().for_each(|id| egui_renderer.free_texture(id));
+            }
 
             {
                 let mut sd = get_state!(self.app, el);
@@ -309,7 +308,7 @@ impl WindowInstance {
             self.app.last_render_time = render_now;
             swap_chain_frame.present();
 
-            // self.app.egui.handle_platform_output(&self.app.window, &self.app.egui, full_output.platform_output);
+            self.app.egui.handle_platform_output(&self.app.window, full_output.platform_output);
         } else {
             // no gpu but we need render it...
             // well...
@@ -436,15 +435,14 @@ impl ApplicationHandler<EventLoopMessage> for WindowManager {
                     states.iter_mut().for_each(|x| x.on_event(sd, StateEvent::ReloadGPU));
                 }
 
-                // this.app.egui = Context::default();
-                // let size = this.app.window.inner_size();
-                // this.app.egui.set_pixels_per_point(this.app.window.scale_factor() as f32);
-                // let WindowInstance {
-                //     ref mut app,
-                //     ..
-                // } = this.deref_mut().deref_mut();
-                // let _ = app.egui.on_event(&app.egui, &WindowEvent::Resized(size));
-
+                // this.app.egui_ctx = Context::default();
+                let size = this.app.window.inner_size();
+                this.app.egui_ctx.set_pixels_per_point(this.app.window.scale_factor() as f32);
+                let WindowInstance {
+                    ref mut app,
+                    ..
+                } = this.deref_mut().deref_mut();
+                let _ = app.egui.on_window_event(&app.window, &WindowEvent::Resized(size));
             }
         }
         for x in created_windows {
@@ -478,7 +476,17 @@ impl ApplicationHandler<EventLoopMessage> for WindowManager {
         {
             if let Some(window) = self.windows.get(&window_id) {
                 let mut wd = GlobalData { el: event_loop, elp: &self.proxy, windows: &self.windows, new_windows: &mut created_windows, world: &mut self.world };
-                window.borrow_mut().on_window_event(&event, &mut wd);
+
+                let mut wm = window.borrow_mut();
+                wm.on_window_event(&event, &mut wd);
+
+                let AppInstance {
+                    ref window,
+                    ref mut egui,
+                    ..
+                } = wm.app;
+
+                let _ = egui.on_window_event(window, &event);
             }
         }
         match event {

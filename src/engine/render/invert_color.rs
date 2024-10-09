@@ -1,6 +1,6 @@
 use bytemuck::Pod;
 use bytemuck::Zeroable;
-use wgpu::{BlendComponent, BlendFactor, BlendOperation, BlendState, Buffer, BufferDescriptor, BufferUsages, ColorTargetState, ColorWrites, include_wgsl, LoadOp, Operations, PrimitiveState, PrimitiveTopology, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, StoreOp, TextureView, VertexAttribute, VertexBufferLayout, VertexFormat};
+use wgpu::{include_wgsl, BlendComponent, BlendFactor, BlendOperation, BlendState, Buffer, BufferDescriptor, BufferUsages, ColorTargetState, ColorWrites, LoadOp, Operations, PrimitiveState, PrimitiveTopology, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, StoreOp, TextureView, VertexAttribute, VertexBufferLayout, VertexFormat};
 
 use crate::engine::app::AppInstance;
 use crate::engine::WgpuData;
@@ -95,6 +95,7 @@ impl InvertColorRenderer {
             depth_stencil: None,
             multisample: Default::default(),
             multiview: None,
+            cache: None,
         });
 
         Self {

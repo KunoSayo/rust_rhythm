@@ -12,7 +12,7 @@ use nalgebra::{vector, Vector2, Vector3};
 use wgpu::util::{BufferInitDescriptor, DeviceExt, RenderEncoder};
 
 use crate::engine::prelude::*;
-use crate::engine::uniform::{CAMERA_BIND_GROUP_ENTRY, uniform_bind_buffer_layout_entry};
+use crate::engine::uniform::{uniform_bind_buffer_layout_entry, CAMERA_BIND_GROUP_ENTRY};
 
 #[repr(C)]
 #[derive(Pod, Zeroable, Default, Copy, Clone, Debug)]
@@ -236,6 +236,7 @@ impl PlaneRenderer {
                 targets: &targets,
             }),
             multiview: None,
+            cache: None,
         };
         let normal_rp = device.create_render_pipeline(&rpd);
         rpd.primitive.cull_mode = None;

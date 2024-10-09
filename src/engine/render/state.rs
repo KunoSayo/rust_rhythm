@@ -6,9 +6,9 @@ use futures::executor::block_on;
 use wgpu::*;
 use winit::window::Window;
 
-use crate::engine::MainRenderViews;
 use crate::engine::render::INSTANCE;
 use crate::engine::uniform::MainUniformBuffer;
+use crate::engine::MainRenderViews;
 
 #[derive(Debug)]
 pub struct WgpuData {
@@ -118,6 +118,7 @@ impl WgpuData {
                         label: None,
                         required_features: adapter.features(),
                         required_limits: adapter.limits(),
+                        memory_hints: Default::default(),
                     },
                     None,
                 ))?;

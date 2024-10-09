@@ -1,12 +1,12 @@
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
+use std::sync::Arc;
 
 use futures::task::SpawnExt;
 use log::error;
 use wgpu::{Device, Queue};
 
-use crate::engine::{GameState, LoopState, ResourceManager, StateData, StateEvent, Trans, WaitFutureState, WaitResult};
 use crate::engine::global::{INITED, IO_POOL};
+use crate::engine::{GameState, LoopState, ResourceManager, StateData, StateEvent, Trans, WaitFutureState, WaitResult};
 
 pub struct InitState {
     start_state: Option<Box<dyn GameState + Send + 'static>>,

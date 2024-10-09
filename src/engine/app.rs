@@ -6,8 +6,8 @@ use log::{info, warn};
 use specs::{World, WorldExt};
 use winit::window::Window;
 
-use crate::engine::{AudioData, BakedInputs, MainRendererData, ResourceManager, WgpuData};
 use crate::engine::window::EventLoopTargetType;
+use crate::engine::{AudioData, BakedInputs, MainRendererData, ResourceManager, WgpuData};
 
 pub struct AppInstance {
     pub window: Window,
@@ -16,6 +16,7 @@ pub struct AppInstance {
     pub res: Arc<ResourceManager>,
     pub last_render_time: std::time::Instant,
     pub egui: State,
+    pub egui_ctx: Context,
 
     pub inputs: BakedInputs,
     pub world: World,
@@ -45,7 +46,7 @@ impl AppInstance {
             info!("Set the egui context scale factor");
         }
 
-        let egui = State::new(egui_ctx.clone(), ViewportId::ROOT, &window, egui_ctx.native_pixels_per_point(), None);
+        let egui = State::new(egui_ctx.clone(), ViewportId::ROOT, &window, egui_ctx.native_pixels_per_point(), None, None);
 
         let al = std::panic::catch_unwind(|| {
             match AudioData::new() {
@@ -71,6 +72,7 @@ impl AppInstance {
             res: res.into(),
             last_render_time: std::time::Instant::now(),
             egui,
+            egui_ctx,
             inputs: Default::default(),
             world: World::new(),
             audio: al,

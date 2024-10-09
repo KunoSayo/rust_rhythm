@@ -1,6 +1,6 @@
 pub use audio::*;
 pub use input::*;
-pub use render::{*, state::*, texture::*};
+pub use render::{state::*, texture::*, *};
 pub use resource::*;
 pub use state::*;
 
@@ -15,6 +15,7 @@ pub mod global;
 pub mod config;
 pub mod task;
 
+#[allow(unused)]
 pub mod prelude {
     pub use rayon::prelude::*;
     pub use wgpu::*;

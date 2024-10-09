@@ -1,8 +1,4 @@
-use std::f32::consts::PI;
-
-use nalgebra::{Matrix4, SimdComplexField, vector, Vector3, Vector4};
-use winit::{dpi::PhysicalPosition, event::*};
-use winit::keyboard::KeyCode;
+use nalgebra::{vector, Matrix4, SimdComplexField, Vector3, Vector4};
 
 const UP: Vector3<f32> = Vector3::<f32>::new(0.0, 0.0, 1.0);
 
@@ -66,15 +62,10 @@ impl CameraUniform {
     }
 }
 #[allow(unused)]
-pub struct CameraController {
-
-}
+pub struct CameraController {}
 
 #[allow(unused)]
-impl CameraController {
-
-
-}
+impl CameraController {}
 
 #[cfg(test)]
 mod test {

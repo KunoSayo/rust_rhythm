@@ -3,7 +3,7 @@ use std::mem::swap;
 
 use winit::dpi::PhysicalPosition;
 use winit::event::{Touch, TouchPhase};
-use winit::keyboard::{KeyCode, PhysicalKey};
+use winit::keyboard::PhysicalKey;
 
 #[allow(unused)]
 #[derive(Debug, Clone)]

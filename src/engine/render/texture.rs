@@ -1,6 +1,6 @@
 use image::GenericImageView;
-use wgpu::{AddressMode, Device, FilterMode, Queue, Sampler, SamplerDescriptor, SurfaceConfiguration, Texture, TextureFormat, TextureView};
 use wgpu::util::{DeviceExt, TextureDataOrder};
+use wgpu::{AddressMode, Device, FilterMode, Queue, Sampler, SamplerDescriptor, SurfaceConfiguration, Texture, TextureFormat, TextureView};
 
 #[allow(unused)]
 #[derive(Debug)]

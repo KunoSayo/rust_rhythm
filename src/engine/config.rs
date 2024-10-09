@@ -1,17 +1,17 @@
 use anyhow::{self, Ok};
-use toml_edit::Document;
+use toml_edit::DocumentMut;
 
 #[allow(unused)]
 #[derive(Default, Debug, Clone)]
 pub struct Config {
-    toml: Document,
+    toml: DocumentMut,
     dirty: bool,
 }
 
 #[allow(unused)]
 impl Config {
     pub fn load(data: &str) -> anyhow::Result<Self> {
-        let toml = data.parse::<Document>();
+        let toml = data.parse::<DocumentMut>();
         Ok(Self { toml: toml?, dirty: false })
     }
 
@@ -24,11 +24,11 @@ impl Config {
         self.dirty
     }
 
-    pub fn toml(&self) -> &Document {
+    pub fn toml(&self) -> &DocumentMut {
         &self.toml
     }
 
-    pub fn toml_mut(&mut self) -> &mut Document {
+    pub fn toml_mut(&mut self) -> &mut DocumentMut {
         self.dirty = true;
         &mut self.toml
     }

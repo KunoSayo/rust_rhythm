@@ -1,6 +1,6 @@
 use bytemuck::Pod;
 use bytemuck::Zeroable;
-use wgpu::{BlendState, Buffer, BufferDescriptor, BufferUsages, ColorTargetState, ColorWrites, include_wgsl, LoadOp, Operations, PrimitiveState, PrimitiveTopology, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, TextureView, VertexAttribute, VertexBufferLayout, VertexFormat, StoreOp};
+use wgpu::{include_wgsl, BlendState, Buffer, BufferDescriptor, BufferUsages, ColorTargetState, ColorWrites, LoadOp, Operations, PrimitiveState, PrimitiveTopology, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline, StoreOp, TextureView, VertexAttribute, VertexBufferLayout, VertexFormat};
 
 use crate::engine::app::AppInstance;
 use crate::engine::WgpuData;
@@ -83,6 +83,7 @@ impl PointRenderer {
             depth_stencil: None,
             multisample: Default::default(),
             multiview: None,
+            cache: None,
         });
 
         Self {
