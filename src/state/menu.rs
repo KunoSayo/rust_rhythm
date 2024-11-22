@@ -1,6 +1,5 @@
 use crate::engine::{GameState, LoopState, StateData, StateEvent, Trans};
-use egui::epaint::PathStroke;
-use egui::{Context, Pos2};
+use egui::{Button, Context, Widget};
 
 pub struct MenuState {}
 
@@ -17,20 +16,25 @@ impl GameState for MenuState {
     }
 
     fn render(&mut self, sd: &mut StateData, ctx: &Context) -> Trans {
-        egui::Window::new("Menu")
-            .frame(egui::Frame::none())
-            .resizable(true)
-            .default_size((400.0, 400.0))
-            .max_size((1600.0, 900.0))
-            .show(ctx, |ui| {
-                ui.label("Test line:");
-                ui.allocate_space(ui.available_size());
-                ui.painter()
-                    .line_segment([Pos2::new(5.0, 5.0), Pos2::new(1600.0, 100.0)],
-                                  PathStroke::new(3.0, egui::Color32::WHITE));
-            });
+        let mut tran = Trans::None;
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.vertical_centered(|ui| {
+                let height = ui.available_height();
+                let button_height = 100.0f32;
+                let padding = ui.style().spacing.button_padding.y;
 
-        Trans::None
+                let button_num = 2f32;
+                let total_height = button_height * button_num + (button_num - 1f32) * padding;
+
+                ui.allocate_space((0.0, (height - total_height).max(0.0) / 2.0).into());
+
+                if Button::new("Play").min_size((200.0, 100.0).into()).ui(ui).clicked() {}
+
+                if Button::new("Editor").min_size((200.0, 100.0).into()).ui(ui).clicked() {}
+            })
+        });
+
+        tran
     }
 
 

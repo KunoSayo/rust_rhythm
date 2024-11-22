@@ -5,6 +5,7 @@ use crate::state::{InitState, MenuState};
 
 mod engine;
 mod state;
+mod game;
 
 pub fn real_main() {
     _main(EventLoop::with_user_event().build().unwrap());

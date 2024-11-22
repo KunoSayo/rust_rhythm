@@ -14,6 +14,7 @@ pub mod window;
 pub mod global;
 pub mod config;
 pub mod task;
+pub mod ew;
 
 #[allow(unused)]
 pub mod prelude {

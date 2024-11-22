@@ -51,6 +51,8 @@ num = "0.4"
 nalgebra = { version = "0.32", features = ["bytemuck"] }
 dashmap = "5.5"
 crossbeam = "0.8"
+serde = { version = "1.0.210", features = ["derive"] }
+ron = "0.8.1"
 
 [features]
 android = ["winit/android-native-activity"]

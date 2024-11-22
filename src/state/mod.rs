@@ -3,3 +3,4 @@ pub use menu::*;
 
 mod init;
 mod menu;
+mod editor;

@@ -7,6 +7,7 @@ use wgpu::*;
 use winit::window::Window;
 
 use crate::engine::render::INSTANCE;
+use crate::engine::renderer::MainRendererData;
 use crate::engine::uniform::MainUniformBuffer;
 use crate::engine::MainRenderViews;
 
@@ -18,7 +19,7 @@ pub struct WgpuData {
     pub queue: Arc<Queue>,
     pub views: MainRenderViews,
     pub uniforms: MainUniformBuffer,
-
+    pub data: MainRendererData,
     pub size_scale: [f32; 2],
 
 }
@@ -76,6 +77,7 @@ impl WgpuData {
             uniforms.uniform_buffer = gpu.uniforms.uniform_buffer.clone();
             let size_scale = [surface_cfg.width as f32 / 1600.0, surface_cfg.height as f32 / 900.0];
             let views = MainRenderViews::new(&device, &surface_cfg);
+            let data = gpu.data.clone();
             Ok(Self {
                 surface,
                 surface_cfg,
@@ -84,6 +86,7 @@ impl WgpuData {
                 views,
 
                 uniforms,
+                data,
                 size_scale,
             })
         });
@@ -145,6 +148,7 @@ impl WgpuData {
             let uniforms = MainUniformBuffer::new(&device);
             let size_scale = [surface_cfg.width as f32 / 1600.0, surface_cfg.height as f32 / 900.0];
             let views = MainRenderViews::new(&device, &surface_cfg);
+            let data = MainRendererData::new(&device);
             Ok(Self {
                 surface,
                 surface_cfg,
@@ -152,6 +156,7 @@ impl WgpuData {
                 queue,
                 views,
                 uniforms,
+                data,
                 size_scale,
             })
         });
