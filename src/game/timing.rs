@@ -8,18 +8,20 @@ pub struct Timing {
     pub offset: OffsetType,
     pub detail: NonZeroU8,
 }
+pub const DEFAULT_TIMING: Timing = Timing {
+    bpm: 120.0,
+    offset: 0,
+    detail: match NonZeroU8::new(4) {
+        Some(e) => e,
+        None => unreachable!()
+    },
+};
 
 impl Default for Timing {
-    const fn default() -> Self {
-        Self {
-            bpm: 120.0,
-            offset: 0,
-            detail: NonZeroU8::new(4).unwrap(),
-        }
+    fn default() -> Self {
+        DEFAULT_TIMING
     }
 }
-
-pub const DEFAULT_TIMING: Timing = Timing::default();
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct TimingLine {

@@ -212,7 +212,7 @@ impl PlaneRenderer {
             layout: Some(&rp_layout),
             vertex: VertexState {
                 module: &shader,
-                entry_point: "plane_vs",
+                entry_point: Some("plane_vs"),
                 compilation_options: Default::default(),
                 buffers: &[PlaneVertex::desc()],
             },
@@ -231,7 +231,7 @@ impl PlaneRenderer {
             multisample: Default::default(),
             fragment: Some(FragmentState {
                 module: &shader,
-                entry_point: "plane_fs",
+                entry_point: Some("plane_fs"),
                 compilation_options: Default::default(),
                 targets: &targets,
             }),
@@ -245,8 +245,8 @@ impl PlaneRenderer {
 
 
         rpd.primitive.cull_mode = None;
-        rpd.vertex.entry_point = "plane_vs_full_tex";
-        rpd.fragment.as_mut().unwrap().entry_point = "plane_pos_tex_fs";
+        rpd.vertex.entry_point = Some("plane_vs_full_tex");
+        rpd.fragment.as_mut().unwrap().entry_point = Some("plane_pos_tex_fs");
         let screen_tex_no_cull_rp = device.create_render_pipeline(&rpd);
 
         rpd.fragment = None;
@@ -257,7 +257,7 @@ impl PlaneRenderer {
         });
         rpd.layout = Some(&rp_layout);
 
-        rpd.vertex.entry_point = "plane_vs";
+        rpd.vertex.entry_point = Some("plane_vs");
         let depth_only_rp = device.create_render_pipeline(&rpd);
         Self {
             base_bind_layout,
@@ -318,14 +318,14 @@ impl General3DRenderer {
 impl PlaneRenderer {
     #[inline]
     pub fn bind<'a, T: RenderEncoder<'a>>(&'a self, encoder: &mut T) {
-        encoder.set_bind_group(0, &self.bindgroup_zero, &[]);
+        encoder.set_bind_group(0, Some(&self.bindgroup_zero), &[]);
     }
 
 
     pub fn render_static<'a, T: RenderEncoder<'a>>(&'a self, encoder: &mut T, _: &WgpuData, objs: &'a [StaticPlanes]) {
         for obj in objs {
             if let Some(bg) = &obj.texture_bind {
-                encoder.set_bind_group(1, bg, &[]);
+                encoder.set_bind_group(1, Some(bg), &[]);
             }
             encoder.set_vertex_buffer(0, obj.buffer.slice(..));
             for i in 0..obj.count {

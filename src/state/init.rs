@@ -3,10 +3,12 @@ use std::sync::Arc;
 
 use futures::task::SpawnExt;
 use log::error;
+use once_cell::sync::Lazy;
 use wgpu::{Device, Queue};
 
-use crate::engine::global::{INITED, IO_POOL};
+use crate::engine::global::{STATIC_DATA, INITED, IO_POOL};
 use crate::engine::{GameState, LoopState, ResourceManager, StateData, StateEvent, Trans, WaitFutureState, WaitResult};
+use crate::game::song::SongManager;
 
 pub struct InitState {
     start_state: Option<Box<dyn GameState + Send + 'static>>,
@@ -46,6 +48,11 @@ async fn load_texture(a_d: Arc<Device>, a_q: Arc<Queue>, a_r: Arc<ResourceManage
 
 
 impl GameState for InitState {
+    fn start(&mut self, s: &mut StateData) {
+        s.wd.world.insert(SongManager::default());
+    }
+
+
     fn update(&mut self, s: &mut StateData) -> (Trans, LoopState) {
         if let Some(gpu) = s.app.gpu.as_ref() {
             let state = self.start_state.take().unwrap();
@@ -58,7 +65,7 @@ impl GameState for InitState {
                 let res = res;
                 let task = async move {
                     if !INITED.load(Ordering::Acquire) {
-                        // Lazy::force(&GLOBAL_DATA);
+                        Lazy::force(&STATIC_DATA);
                     }
                     load_texture(device, queue, res).await?;
 
@@ -68,8 +75,8 @@ impl GameState for InitState {
                     error!("Load failed for {:?}", e);
                     WaitResult::Exit
                 } else {
-                    WaitResult::Function(Box::new(|_| {
-                        // s.app.egui_ctx.set_fonts(GLOBAL_DATA.font.clone());
+                    WaitResult::Function(Box::new(|s| {
+                        s.app.egui_ctx.set_fonts(STATIC_DATA.font.clone());
                         Trans::Switch(state)
                     }))
                 }

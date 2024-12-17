@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use crate::game::map::SongMapInfo;
 
 #[derive(Clone, Debug)]
 pub struct SongInfo {
@@ -6,6 +7,11 @@ pub struct SongInfo {
     pub title: String,
     pub author: String,
     pub tags: Vec<String>,
+    pub maps: Vec<SongMapInfo>,
 }
 
-pub struct SongManager {}
+#[derive(Default)]
+pub struct SongManager {
+    songs: Vec<SongInfo>
+}
+

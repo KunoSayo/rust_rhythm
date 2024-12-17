@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 use egui::{FontData, FontDefinitions, FontFamily};
 use futures::executor::ThreadPool;
@@ -27,11 +27,11 @@ pub static IO_POOL: Lazy<ThreadPool> = Lazy::new(|| {
 #[allow(unused)]
 pub static INITED: AtomicBool = AtomicBool::new(false);
 #[allow(unused)]
-pub static GLOBAL_DATA: Lazy<StaticData> = Lazy::new(|| {
+pub static STATIC_DATA: Lazy<StaticData> = Lazy::new(|| {
     INITED.store(true, Ordering::Relaxed);
     info!("Loading lazy global data");
     let mut font = FontDefinitions::default();
-    font.font_data.insert("cjk".into(), FontData::from_static(files::FONT_DATA));
+    font.font_data.insert("cjk".into(), Arc::from(FontData::from_static(files::FONT_DATA)));
     font.families.get_mut(&FontFamily::Monospace)
         .unwrap()
         .insert(0, "cjk".into());

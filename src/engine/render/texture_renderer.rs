@@ -110,7 +110,7 @@ impl TextureRenderer {
             layout: Some(&rp_layout),
             vertex: VertexState {
                 module: &shader,
-                entry_point: "vs",
+                entry_point: Some("vs"),
                 compilation_options: Default::default(),
                 buffers: &[RendererVertex::desc()],
             },
@@ -123,7 +123,7 @@ impl TextureRenderer {
             multisample: Default::default(),
             fragment: Some(FragmentState {
                 module: &shader,
-                entry_point: "fs",
+                entry_point: Some("fs"),
                 compilation_options: Default::default(),
                 targets: &targets,
             }),
