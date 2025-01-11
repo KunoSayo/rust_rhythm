@@ -1,10 +1,12 @@
+use std::future::Future;
 use std::task::{Context, Poll, Waker};
 
-use futures::future::RemoteHandle;
-use futures::FutureExt;
-
+use crate::engine::global::IO_POOL;
 use crate::engine::prelude::*;
 use crate::engine::task::wakers::WindowWaker;
+use futures::future::RemoteHandle;
+use futures::task::SpawnExt;
+use futures::FutureExt;
 
 #[allow(unused)]
 pub enum WaitResult {
@@ -31,6 +33,13 @@ impl WaitFutureState {
             result: None,
             waker: None,
         }.into()
+    }
+
+    pub fn wait_task(task: impl Future<Output=WaitResult> + Send + 'static) -> Box<Self> {
+
+        let handle = IO_POOL.spawn_with_handle(task)
+            .expect("Failed to spawn");
+        Self::from_wait_thing(handle)
     }
 }
 

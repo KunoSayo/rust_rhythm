@@ -1,6 +1,6 @@
 use crate::engine::{GameState, LoopState, StateData, StateEvent, Trans};
-use egui::{Button, Context, Widget};
 use crate::state::editor::EditorMenu;
+use egui::{Button, Context, Widget};
 
 pub struct MenuState {}
 

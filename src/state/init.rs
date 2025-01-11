@@ -6,7 +6,7 @@ use log::error;
 use once_cell::sync::Lazy;
 use wgpu::{Device, Queue};
 
-use crate::engine::global::{STATIC_DATA, INITED, IO_POOL};
+use crate::engine::global::{INITED, IO_POOL, STATIC_DATA};
 use crate::engine::{GameState, LoopState, ResourceManager, StateData, StateEvent, Trans, WaitFutureState, WaitResult};
 use crate::game::song::SongManager;
 
@@ -38,7 +38,7 @@ async fn load_texture(a_d: Arc<Device>, a_q: Arc<Queue>, a_r: Arc<ResourceManage
     //     res.load_texture_async(device, queue, "black_f".into(), "texture/floor/black.png"),
     //
     // ]
-    //     .map(|task| IO_POOL.spawn_with_handle(task))
+    //     .beatmap(|task| IO_POOL.spawn_with_handle(task))
     // {
     //     x?.await?;
     // }
@@ -49,7 +49,6 @@ async fn load_texture(a_d: Arc<Device>, a_q: Arc<Queue>, a_r: Arc<ResourceManage
 
 impl GameState for InitState {
     fn start(&mut self, s: &mut StateData) {
-        s.wd.world.insert(SongManager::default());
     }
 
 
@@ -71,12 +70,14 @@ impl GameState for InitState {
 
                     anyhow::Ok(())
                 };
+                let song_manager = SongManager::init_manager();
                 if let Err(e) = task.await {
                     error!("Load failed for {:?}", e);
                     WaitResult::Exit
                 } else {
                     WaitResult::Function(Box::new(|s| {
                         s.app.egui_ctx.set_fonts(STATIC_DATA.font.clone());
+                        s.wd.world.insert(song_manager);
                         Trans::Switch(state)
                     }))
                 }

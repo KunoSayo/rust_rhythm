@@ -1,3 +1,6 @@
+#![allow(unused)]
+
+
 use std::cell::RefCell;
 use std::time::Duration;
 
@@ -14,7 +17,7 @@ use crate::engine::window::{EventLoopProxyType, EventLoopTargetType, WindowInsta
 
 mod wait_future;
 
-#[allow(unused)]
+
 pub enum Trans {
     None,
     Push(Box<dyn GameState>),

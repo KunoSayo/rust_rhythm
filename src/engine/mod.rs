@@ -1,3 +1,6 @@
+#![allow(unused)]
+
+
 pub use audio::*;
 pub use input::*;
 pub use render::{state::*, texture::*, *};
@@ -16,7 +19,6 @@ pub mod config;
 pub mod task;
 pub mod ew;
 
-#[allow(unused)]
 pub mod prelude {
     pub use rayon::prelude::*;
     pub use wgpu::*;

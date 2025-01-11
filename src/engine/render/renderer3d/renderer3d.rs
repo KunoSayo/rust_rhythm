@@ -4,6 +4,9 @@
 //!
 //! Use global camera uniform
 
+
+#![allow(unused)]
+
 use std::array::from_ref;
 use std::mem::size_of;
 
@@ -13,6 +16,7 @@ use wgpu::util::{BufferInitDescriptor, DeviceExt, RenderEncoder};
 
 use crate::engine::prelude::*;
 use crate::engine::uniform::{uniform_bind_buffer_layout_entry, CAMERA_BIND_GROUP_ENTRY};
+
 
 #[repr(C)]
 #[derive(Pod, Zeroable, Default, Copy, Clone, Debug)]
