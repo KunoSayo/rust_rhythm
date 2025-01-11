@@ -37,7 +37,7 @@ cpal = "0.15.3"
 
 # functions
 toml_edit = "0.22.13"
-specs = "0.20.0"
+specs = { version = "0.20.0" , default-features = false}
 
 # log
 log = "0.4.22"

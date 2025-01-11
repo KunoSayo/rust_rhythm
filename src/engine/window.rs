@@ -6,6 +6,7 @@ use std::ops::DerefMut;
 use egui::epaint::ahash::{HashMap, HashMapExt};
 use egui::Context;
 use egui_wgpu::ScreenDescriptor;
+use futures::executor::ThreadPool;
 use log::info;
 use specs::World;
 use wgpu::{Color, CommandEncoderDescriptor, Extent3d, ImageCopyTexture, LoadOp, Operations, Origin3d, RenderPassColorAttachment, RenderPassDescriptor, StoreOp, TextureAspect};
@@ -18,6 +19,7 @@ use winit::window::{Window, WindowAttributes, WindowId};
 
 use crate::engine::app::AppInstance;
 use crate::engine::{GameState, GlobalData, LoopState, MainRendererData, Pointer, StateEvent, Trans, WgpuData};
+use crate::engine::global::IO_POOL;
 
 #[derive(Default)]
 struct LoopInfo {
@@ -380,7 +382,11 @@ impl WindowManager {
     pub(crate) fn run_loop(mut self, event_loop: EventLoop<EventLoopMessage>, start: impl GameState) {
         self.start = Some(Box::new(start));
         event_loop.listen_device_events(DeviceEvents::Never);
-        event_loop.run_app(&mut self).expect("Run loop failed");
+        let result = event_loop.run_app(&mut self);
+        if let Err(e) = result {
+            log::error!("Failed to run event loop for {:?}", e);
+        }
+
     }
 }
 

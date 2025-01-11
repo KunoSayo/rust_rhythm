@@ -17,6 +17,9 @@ use crate::engine::window::{EventLoopProxyType, EventLoopTargetType, WindowInsta
 
 mod wait_future;
 
+pub unsafe fn cast_static<'a, T>(x: &'a T) -> &'static T {
+    std::mem::transmute(x)
+}
 
 pub enum Trans {
     None,

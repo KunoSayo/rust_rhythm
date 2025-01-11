@@ -2,6 +2,7 @@
 
 pub mod file;
 
+use std::path::PathBuf;
 use crate::game::beatmap::file::SongBeatmapFile;
 use serde::{Deserialize, Serialize};
 
@@ -12,8 +13,9 @@ pub enum MapRule {
 
 pub const BEATMAP_EXT: &'static str = "rr";
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct SongBeatmapInfo {
+    pub file_path: PathBuf,
     pub song_beatmap_file: SongBeatmapFile
 }
 

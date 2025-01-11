@@ -9,6 +9,7 @@ use futures::task::SpawnExt;
 use futures::FutureExt;
 
 #[allow(unused)]
+/// The result after pop the wait state
 pub enum WaitResult {
     Exit,
     Pop,

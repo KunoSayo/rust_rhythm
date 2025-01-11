@@ -1663,9 +1663,6 @@ name = "hibitset"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f3ede5cfa60c958e60330d65163adbc4211e15a2653ad80eb0cce878de120121"
-dependencies = [
- "rayon",
-]
 
 [[package]]
 name = "home"
@@ -3410,7 +3407,6 @@ dependencies = [
  "ahash 0.7.6",
  "arrayvec",
  "atomic_refcell",
- "rayon",
  "smallvec",
  "tynm",
 ]
@@ -3548,7 +3544,6 @@ dependencies = [
  "hibitset",
  "log",
  "nougat",
- "rayon",
  "shred",
  "shrev",
  "tuple_utils",
