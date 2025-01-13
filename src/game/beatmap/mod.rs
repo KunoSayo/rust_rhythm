@@ -13,7 +13,7 @@ pub enum MapRule {
 
 pub const BEATMAP_EXT: &'static str = "rr";
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct SongBeatmapInfo {
     pub file_path: PathBuf,
     pub song_beatmap_file: SongBeatmapFile,

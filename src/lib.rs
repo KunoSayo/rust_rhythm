@@ -1,7 +1,7 @@
-use winit::event_loop::EventLoop;
-
+use crate::engine::global::STATIC_DATA;
 use crate::engine::window::{EventLoopMessage, WindowManager};
 use crate::state::{InitState, MenuState};
+use winit::event_loop::EventLoop;
 
 mod engine;
 mod state;
@@ -24,6 +24,7 @@ fn _main(event_loop: EventLoop<EventLoopMessage>) {
         Ok(am) => {
             log::info!("Got the main application");
             am.run_loop(event_loop, InitState::new(Box::new(MenuState::new())));
+            STATIC_DATA.cfg_data.write().unwrap().check_save();
         }
         Err(e) => {
             log::error!("Init the app manager failed for {:?}", e);

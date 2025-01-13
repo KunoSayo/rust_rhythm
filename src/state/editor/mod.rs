@@ -4,7 +4,7 @@ mod editor;
 use crate::engine::{GameState, LoopState, StateData, Trans, WaitFutureState, WaitResult};
 use crate::game::song::{SongManager, SongManagerResourceType};
 use crate::state::editor::editor::BeatMapEditor;
-use crate::ui::song_list::SongListUi;
+use crate::ui::song_list::{EnterResult, SongListUi};
 use egui::{Align, Color32, Context, Layout, Pos2, Rect, UiBuilder, UiKind, UiStackInfo, Widget};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::sync::atomic::Ordering;
@@ -69,13 +69,24 @@ impl GameState for EditorMenu {
                                 .expect("How can we lost song manager")
                                 .clone();
 
+                            let handle = s.app.audio.as_ref().unwrap().stream_handle.clone();
                             tran = Trans::Push(WaitFutureState::wait_task(async move {
                                 let result = song_manager.import_song(&music);
                                 match result {
                                     Ok(e) => {
-                                        let editor = BeatMapEditor::new(e);
-                                        let editor = Box::new(editor);
-                                        WaitResult::Push(editor)
+                                        let editor = BeatMapEditor::new(e, handle);
+                                        match editor {
+                                            Ok(editor) => {
+                                                let editor = Box::new(editor);
+                                                WaitResult::Push(editor)
+                                            }
+                                            Err(e) => {
+                                                log::warn!("Failed to import music for {:?}", e);
+                                                WaitResult::Function(Box::new(|_| {
+                                                    Trans::None
+                                                }))
+                                            }
+                                        }
                                     }
                                     Err(e) => {
                                         log::warn!("Failed to import music for {:?}", e);
@@ -99,7 +110,19 @@ impl GameState for EditorMenu {
                 .ui_stack_info(UiStackInfo::new(UiKind::GenericArea))
                 .layout(Layout::top_down(Align::RIGHT));
             ui.allocate_new_ui(builder, |ui| {
-                self.ui.ui(ui);
+                let response = self.ui.ui(ui);
+                if let Some(result) = response.result {
+                    let editor = BeatMapEditor::with_file(result.song, result.beatmap, s.app.audio.as_ref().unwrap().stream_handle.clone());
+                    match editor {
+                        Ok(editor) => {
+                            let editor = Box::new(editor);
+                            tran = Trans::Push(editor);
+                        }
+                        Err(e) => {
+                            panic!("Failed to open music, maybe error box soon? {}", e);
+                        }
+                    }
+                }
             });
         });
 

@@ -1,9 +1,18 @@
-pub struct AudioData {}
+use rodio::OutputStreamHandle;
+
+pub struct AudioData {
+    pub stream: rodio::OutputStream,
+    pub stream_handle: OutputStreamHandle,
+}
 
 
 impl AudioData {
     pub fn new() -> anyhow::Result<AudioData> {
-        Ok(Self {})
+        let (stream, handle) = rodio::OutputStream::try_default()?;
+        Ok(Self {
+            stream,
+            stream_handle: handle,
+        })
     }
 }
 
