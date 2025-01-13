@@ -37,7 +37,6 @@ impl WaitFutureState {
     }
 
     pub fn wait_task(task: impl Future<Output=WaitResult> + Send + 'static) -> Box<Self> {
-
         let handle = IO_POOL.spawn_with_handle(task)
             .expect("Failed to spawn");
         Self::from_wait_thing(handle)

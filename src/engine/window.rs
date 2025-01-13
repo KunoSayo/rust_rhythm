@@ -18,8 +18,8 @@ use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowAttributes, WindowId};
 
 use crate::engine::app::AppInstance;
-use crate::engine::{GameState, GlobalData, LoopState, MainRendererData, Pointer, StateEvent, Trans, WgpuData};
 use crate::engine::global::IO_POOL;
+use crate::engine::{GameState, GlobalData, LoopState, MainRendererData, Pointer, StateEvent, Trans, WgpuData};
 
 #[derive(Default)]
 struct LoopInfo {
@@ -386,7 +386,6 @@ impl WindowManager {
         if let Err(e) = result {
             log::error!("Failed to run event loop for {:?}", e);
         }
-
     }
 }
 

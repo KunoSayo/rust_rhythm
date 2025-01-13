@@ -1,12 +1,12 @@
 use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use std::sync::{Arc, RwLock};
 
+use crate::engine::config::Config;
 use egui::{FontData, FontDefinitions, FontFamily};
 use futures::executor::ThreadPool;
 use log::info;
 use once_cell::sync::Lazy;
 use specs::shred::cell::AtomicRefCell;
-use crate::engine::config::Config;
 #[allow(unused)]
 pub struct StaticData {
     pub font: FontDefinitions,
@@ -14,7 +14,6 @@ pub struct StaticData {
 }
 
 pub static IO_POOL: Lazy<ThreadPool> = Lazy::new(|| {
-    
     let pool = ThreadPool::builder()
         .name_prefix("IO POOL")
         .before_stop(|x| {
@@ -23,10 +22,9 @@ pub static IO_POOL: Lazy<ThreadPool> = Lazy::new(|| {
         .stack_size(10 * 1024 * 1024)
         .pool_size(4)
         .create().expect("Create io thread pool failed");
-    
+
     pool
 });
-
 
 
 #[allow(unused)]

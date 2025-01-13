@@ -1,6 +1,6 @@
 pub use init::*;
-pub use menu::*;
+pub use main_menu::*;
 
 mod init;
-mod menu;
+mod main_menu;
 mod editor;

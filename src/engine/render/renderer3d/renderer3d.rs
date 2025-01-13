@@ -4,7 +4,6 @@
 //!
 //! Use global camera uniform
 
-
 #![allow(unused)]
 
 use std::array::from_ref;

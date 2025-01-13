@@ -1,11 +1,11 @@
-use std::sync::Arc;
 use crate::engine::GameState;
 use crate::game::beatmap::file::SongBeatmapFile;
 use crate::game::song::SongInfo;
+use std::sync::Arc;
 
 pub struct BeatMapEditor {
     pub song_info: Arc<SongInfo>,
-    pub song_beatmap_file: SongBeatmapFile
+    pub song_beatmap_file: SongBeatmapFile,
 }
 
 impl BeatMapEditor {
@@ -17,6 +17,4 @@ impl BeatMapEditor {
     }
 }
 
-impl GameState for BeatMapEditor {
-    
-}
+impl GameState for BeatMapEditor {}

@@ -5,10 +5,10 @@ use dashmap::DashMap;
 use rayon::iter::ParallelBridge;
 use rayon::iter::ParallelIterator;
 use serde::Deserialize;
-use std::fs::{DirEntry};
+use std::fs::DirEntry;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 
 #[derive(Debug)]
 pub struct SongInfo {
@@ -25,6 +25,8 @@ pub struct SongManager {
     pub root: PathBuf,
     pub songs: DashMap<String, Arc<SongInfo>>,
 }
+
+pub type SongManagerResourceType = Arc<SongManager>;
 
 impl SongManager {
     fn get_root() -> PathBuf {
@@ -163,9 +165,7 @@ impl SongManager {
         let bgm_file = song_dir.join("bgm.".to_string() + ext);
 
         std::fs::copy(song, &bgm_file)?;
-        
-        
-        
+
 
         let info = SongInfo {
             bgm_file,
@@ -173,10 +173,10 @@ impl SongManager {
             maps: vec![],
             dirty: AtomicBool::new(true),
         };
-        
+
         let info = Arc::new(info);
         self.songs.insert(filename_no_ext.to_string(), info.clone());
-        
+
         Ok(info)
     }
 }

@@ -1,4 +1,4 @@
-use winit::event_loop::{EventLoop};
+use winit::event_loop::EventLoop;
 
 use crate::engine::window::{EventLoopMessage, WindowManager};
 use crate::state::{InitState, MenuState};

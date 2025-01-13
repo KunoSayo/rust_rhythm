@@ -24,8 +24,7 @@ impl InitState {
 
 
 impl GameState for InitState {
-    fn start(&mut self, s: &mut StateData) {
-    }
+    fn start(&mut self, s: &mut StateData) {}
 
 
     fn update(&mut self, s: &mut StateData) -> (Trans, LoopState) {
@@ -42,7 +41,7 @@ impl GameState for InitState {
                     if !INITED.load(Ordering::Acquire) {
                         Lazy::force(&STATIC_DATA);
                     }
- 
+
 
                     anyhow::Ok(())
                 };
