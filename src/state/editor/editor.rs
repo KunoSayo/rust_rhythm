@@ -191,6 +191,13 @@ impl BeatMapEditor {
                     min: start_point,
                     max: (start_point.x + progress_width, start_point.y + height).into(),
                 };
+                let response = ui.allocate_rect(background_rect, Sense::hover());
+                if response.hover_pos().is_some() {
+                    ui.input(|input| {
+                        self.input_cache.progress_half_time -= input.smooth_scroll_delta.y * 0.01;
+                        self.input_cache.progress_half_time = self.input_cache.progress_half_time.clamp(0.2, 3.0);
+                    });
+                }
                 ui.painter().rect_filled(background_rect, 0.0, Color32::DARK_GRAY);
 
 
@@ -212,22 +219,25 @@ impl BeatMapEditor {
                 let right_sample_idx = right_sample_idx.at_most((self.total_duration.as_secs_f32() * self.sample_info.sample_rate as f32) as usize);
 
                 use rayon::prelude::*;
-                (left_sample_idx.at_least(0)..=right_sample_idx).into_par_iter().for_each(|idx| {
+                
+                let left_pixel_start = raw_left_sample_idx * vec.len() as isize / idx_len as isize;
+                
+                (left_sample_idx.at_least(0)..=right_sample_idx).into_par_iter().for_each(|sample_idx| {
                     let (mut mn, mut mx) = (0, 0);
                     for j in 0..self.sample_info.channels as usize {
-                        let cur = self.sample_info.samples[idx * self.sample_info.channels as usize + j];
+                        let cur = self.sample_info.samples[sample_idx * self.sample_info.channels as usize + j];
                         mn = mn.min(cur);
                         mx = mx.max(cur);
                     }
 
-                    let offset = (idx as isize - raw_left_sample_idx) as usize;
-                    // offset <= idx_len
-                    // the idx <= vec len
+                    let offset = sample_idx;
+    
+                    
                     let pixel = offset * vec.len() / idx_len;
+                    let pixel = (pixel as isize - left_pixel_start) as usize;
+                    
 
-                    debug_assert!(pixel < vec.len());
-                    unsafe {
-                        let (x, y) = vec.get_unchecked(pixel);
+                    if let Some((x, y)) = vec.get(pixel) {
                         x.fetch_min(mn, Ordering::Relaxed);
                         y.fetch_max(mx, Ordering::Relaxed);
                     }
@@ -240,17 +250,20 @@ impl BeatMapEditor {
 
                 let center_y = start_point.y + height * 0.5;
                 let half_height = height * 0.5;
+                
                 vec.par_iter_mut().enumerate().for_each(|(offset, (mn, mx))| {
                     let high = *mx.get_mut() as f32 / mx_val;
                     let low = *mn.get_mut() as f32 / mx_val;
 
                     let high = center_y - high.abs() * half_height;
                     let low = center_y + low.abs() * half_height;
-                    painter.vline(start_point.x + offset as f32, high..=low, PathStroke::new(2.5, Color32::GRAY));
+                    painter.vline(start_point.x + offset as f32, high..=low, PathStroke::new(3.0, Color32::GRAY));
                 });
 
                 // render current line
                 ui.painter().vline(start_point.x + progress_width * 0.5, start_point.y..=start_point.y + height, PathStroke::new(5.0, Color32::LIGHT_BLUE));
+                
+                
             });
     }
 
