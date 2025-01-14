@@ -1,6 +1,7 @@
 //! The real playing beatmap that contains detail notes.
 
 pub mod file;
+mod test;
 
 use crate::game::beatmap::file::SongBeatmapFile;
 use serde::{Deserialize, Serialize};

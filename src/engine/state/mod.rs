@@ -65,7 +65,7 @@ pub trait GameState: 'static {
     /// Update when event cleared
     fn update(&mut self, _: &mut StateData) -> (Trans, LoopState) { (Trans::None, LoopState::WAIT) }
 
-    fn shadow_update(&mut self) -> LoopState { LoopState::WAIT_ALL }
+    fn shadow_update(&mut self, _: &mut StateData) -> LoopState { LoopState::WAIT_ALL }
 
     /// Callback if render after the main event cleared
     /// GPU must be Some when calling this

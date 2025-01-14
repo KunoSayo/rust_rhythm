@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use std::collections::{HashMap, HashSet};
 use std::mem::swap;
 
@@ -5,7 +7,6 @@ use winit::dpi::PhysicalPosition;
 use winit::event::{Touch, TouchPhase};
 use winit::keyboard::PhysicalKey;
 
-#[allow(unused)]
 #[derive(Debug, Clone)]
 pub struct Pointer {
     id: u64,
@@ -72,7 +73,6 @@ impl BakedInputs {
             .count();
     }
 
-    #[allow(unused)]
     pub fn is_pressed(&self, keys: &[PhysicalKey]) -> bool {
         keys.iter().any(|k| !self.last_frame_input.pressing.contains(k))
             && keys.iter().all(|k| self.cur_frame_input.pressing.contains(k))

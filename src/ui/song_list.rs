@@ -1,6 +1,6 @@
 use crate::game::beatmap::SongBeatmapInfo;
 use crate::game::song::SongInfo;
-use egui::{Button, Color32, NumExt, ScrollArea, Ui, Vec2};
+use egui::{Button, Color32, NumExt, RichText, ScrollArea, Ui, Vec2};
 use std::cell::Cell;
 use std::sync::Arc;
 
@@ -88,7 +88,7 @@ impl SongListUi {
         let old_y = ui.next_widget_position().y;
 
         let selected = self.song_select.get() == idx;
-        let button = Button::new(&song.title)
+        let button = Button::new(RichText::new(&song.title).color(Color32::WHITE))
             .selected(selected)
             .fill(if self.song_select.get() == idx {
                 Color32::LIGHT_BLUE

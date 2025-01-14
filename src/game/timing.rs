@@ -1,17 +1,47 @@
 use crate::game::OffsetType;
+use egui::NumExt;
 use serde::{Deserialize, Serialize};
+use std::convert::Into;
 use std::num::NonZeroU8;
+
+// Store bpm with 100 times
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+pub struct Bpm(u32);
+
+impl From<f32> for Bpm {
+    fn from(value: f32) -> Self {
+        Self {
+            0: (value * 100.0).round().at_least(1.0) as u32,
+        }
+    }
+}
+
+impl From<f64> for Bpm {
+    fn from(value: f64) -> Self {
+        Self {
+            0: (value * 100.0).round().at_least(1.0) as u32,
+        }
+    }
+}
+
+
+impl Into<f32> for Bpm {
+    fn into(self) -> f32 {
+        self.0 as f32 / 100.0
+    }
+}
+
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
 pub struct Timing {
-    pub bpm: f64,
+    pub bpm: Bpm,
     pub offset: OffsetType,
-    pub detail: NonZeroU8,
+    pub time_signature: NonZeroU8,
 }
 pub const DEFAULT_TIMING: Timing = Timing {
-    bpm: 120.0,
+    bpm: Bpm(60 * 100),
     offset: 0,
-    detail: match NonZeroU8::new(4) {
+    time_signature: match NonZeroU8::new(4) {
         Some(e) => e,
         None => unreachable!()
     },

@@ -122,19 +122,23 @@ impl WindowInstance {
         self.loop_info.loop_state = LoopState::WAIT_ALL;
 
         self.app.inputs.swap_frame();
+        let now = std::time::Instant::now();
+        let dt = now.duration_since(self.app.last_update_time).as_secs_f32();
         {
+            let mut state_data = get_state!(self.app, wd);
+            state_data.dt = dt;
             for x in &mut self.states {
-                self.loop_info.loop_state |= x.shadow_update();
+                self.loop_info.loop_state |= x.shadow_update(&mut state_data);
             }
             if let Some(last) = self.states.last_mut() {
                 let ((tran, l), wd) = {
-                    let mut state_data = get_state!(self.app, wd);
                     (last.update(&mut state_data), state_data.wd)
                 };
                 self.process_tran(tran, wd);
                 self.loop_info.loop_state |= l;
             }
         }
+        self.app.last_update_time = now;
     }
 
 

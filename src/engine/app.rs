@@ -15,6 +15,7 @@ pub struct AppInstance {
     pub render: Option<MainRendererData>,
     pub res: Arc<ResourceManager>,
     pub last_render_time: std::time::Instant,
+    pub last_update_time: std::time::Instant,
     pub egui: State,
     pub egui_ctx: Context,
 
@@ -71,6 +72,7 @@ impl AppInstance {
             render,
             res: res.into(),
             last_render_time: std::time::Instant::now(),
+            last_update_time: std::time::Instant::now(),
             egui,
             egui_ctx,
             inputs: Default::default(),
