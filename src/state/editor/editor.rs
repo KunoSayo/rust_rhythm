@@ -219,9 +219,9 @@ impl BeatMapEditor {
                 let right_sample_idx = right_sample_idx.at_most((self.total_duration.as_secs_f32() * self.sample_info.sample_rate as f32) as usize);
 
                 use rayon::prelude::*;
-                
+
                 let left_pixel_start = raw_left_sample_idx * vec.len() as isize / idx_len as isize;
-                
+
                 (left_sample_idx.at_least(0)..=right_sample_idx).into_par_iter().for_each(|sample_idx| {
                     let (mut mn, mut mx) = (0, 0);
                     for j in 0..self.sample_info.channels as usize {
@@ -231,11 +231,11 @@ impl BeatMapEditor {
                     }
 
                     let offset = sample_idx;
-    
-                    
+
+
                     let pixel = offset * vec.len() / idx_len;
                     let pixel = (pixel as isize - left_pixel_start) as usize;
-                    
+
 
                     if let Some((x, y)) = vec.get(pixel) {
                         x.fetch_min(mn, Ordering::Relaxed);
@@ -250,7 +250,7 @@ impl BeatMapEditor {
 
                 let center_y = start_point.y + height * 0.5;
                 let half_height = height * 0.5;
-                
+
                 vec.par_iter_mut().enumerate().for_each(|(offset, (mn, mx))| {
                     let high = *mx.get_mut() as f32 / mx_val;
                     let low = *mn.get_mut() as f32 / mx_val;
@@ -262,8 +262,6 @@ impl BeatMapEditor {
 
                 // render current line
                 ui.painter().vline(start_point.x + progress_width * 0.5, start_point.y..=start_point.y + height, PathStroke::new(5.0, Color32::LIGHT_BLUE));
-                
-                
             });
     }
 
@@ -328,18 +326,19 @@ impl BeatMapEditor {
                         max: (progress_end, start_point.y + height).into(),
                     };
 
-                    let response = ui.allocate_rect(progress_rect, Sense::click_and_drag());
-                    if let Some(pos) = response.interact_pointer_pos() {
-                        let drag_x = pos.x;
-                        let drag_progress = ((drag_x - progress_start) / progress_width).clamp(0.0, 1.0);
-                        self.sink.pause();
+                    let response = ui.allocate_rect(progress_rect, Sense::drag());
+                    if (response.dragged() && response.drag_delta().length_sq() != 0.0) || response.drag_started() {
+                        if let Some(pos) = response.interact_pointer_pos() {
+                            let drag_x = pos.x;
+                            let drag_progress = ((drag_x - progress_start) / progress_width).clamp(0.0, 1.0);
 
 
-                        let dest_duration = self.total_duration.mul_f32(drag_progress);
+                            let dest_duration = self.total_duration.mul_f32(drag_progress);
 
 
-                        self.sink.try_seek(dest_duration.mul_f32(1.0 / self.sink.speed()))
-                            .expect("Failed to seek");
+                            self.sink.try_seek(dest_duration.mul_f32(1.0 / self.sink.speed()))
+                                .expect("Failed to seek");
+                        }
                     }
                 });
 

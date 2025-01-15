@@ -78,3 +78,5 @@ build_targets = ["aarch64-linux-android"]
 [package.metadata.android.signing.release]
 path = "./sign/debug.keystore"
 keystore_password = "android"
+
+
