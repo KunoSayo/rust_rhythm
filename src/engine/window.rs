@@ -181,11 +181,7 @@ impl WindowInstance {
             let render_now = std::time::Instant::now();
             let render_dur = render_now.duration_since(self.app.last_render_time);
             let dt = render_dur.as_secs_f32();
-            let swap_chain_frame = if let Ok(s) = gpu.surface.get_current_texture() { s } else {
-                // it is normal.
-                return;
-            };
-            let surface_output = &swap_chain_frame;
+ 
             {
                 let mut encoder = gpu.device.create_command_encoder(&CommandEncoderDescriptor { label: Some("Clear Encoder") });
                 let _ = encoder.begin_render_pass(&RenderPassDescriptor {
@@ -282,11 +278,18 @@ impl WindowInstance {
             }
             let gpu = self.app.gpu.as_ref().unwrap();
 
+            // We do get here
+            let swap_chain_frame = if let Ok(s) = gpu.surface.get_current_texture() { s } else {
+                // it is normal.
+                return;
+            };
             {
                 let mut encoder = gpu.device.create_command_encoder(&CommandEncoderDescriptor {
                     label: Some("Copy buffer to screen commands")
                 });
                 let size = gpu.get_screen_size();
+                
+                let surface_output = &swap_chain_frame;
                 encoder.copy_texture_to_texture(ImageCopyTexture {
                     texture: &gpu.views.get_screen().texture,
                     mip_level: 0,

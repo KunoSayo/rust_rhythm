@@ -6,9 +6,10 @@ use crate::game::song::SongInfo;
 use anyhow::anyhow;
 use egui::epaint::PathStroke;
 use egui::panel::TopBottomSide;
-use egui::{Align, Color32, Context, Frame, Label, Layout, NumExt, Rect, RichText, Sense, UiBuilder, Vec2};
+use egui::{Align, Button, Color32, Context, Frame, Label, Layout, NumExt, Rect, RichText, Sense, UiBuilder, Vec2};
 use rodio::{Decoder, OutputStreamHandle, Sink, Source};
 use std::io::{Cursor, Read};
+use std::ops::Add;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicI16, Ordering};
 use std::sync::Arc;
@@ -16,9 +17,17 @@ use std::time::Duration;
 use winit::keyboard::{KeyCode, PhysicalKey};
 
 pub struct SongSampleInfo {
+    raw_data: Cursor<Vec<u8>>,
     samples: Vec<i16>,
     sample_rate: u32,
     channels: u16,
+}
+
+#[derive(Copy, Clone, Eq, PartialEq)]
+pub enum SubEditor {
+    Settings,
+    Beatmap,
+    Timing,
 }
 pub struct BeatMapEditor {
     pub song_info: Arc<SongInfo>,
@@ -29,6 +38,8 @@ pub struct BeatMapEditor {
     input_cache: InputCache,
 
     sample_info: SongSampleInfo,
+
+    current_editor: SubEditor,
 }
 
 
@@ -79,17 +90,20 @@ impl BeatMapEditor {
         let path = info.as_ref().map(|x| x.file_path.clone());
 
         let sample_info = {
-            let decoder = Decoder::new(buf)?;
+            let decoder = Decoder::new(buf.clone())?;
 
             let sample_rate = decoder.sample_rate();
             let channels = decoder.channels();
             let samples = decoder.convert_samples::<i16>().collect();
             SongSampleInfo {
+                raw_data: buf,
                 samples,
                 sample_rate,
                 channels,
             }
         };
+
+        let current_editor = SubEditor::Timing;
         Ok(Self {
             song_beatmap_file: info.map(|x| x.song_beatmap_file).unwrap_or(SongBeatmapFile::new(song_info.title.clone())),
             song_info,
@@ -98,6 +112,7 @@ impl BeatMapEditor {
             total_duration,
             input_cache: Default::default(),
             sample_info,
+            current_editor,
         })
     }
 }
@@ -107,6 +122,7 @@ impl GameState for BeatMapEditor {
     fn start(&mut self, s: &mut StateData) {}
 
     fn update(&mut self, s: &mut StateData) -> (Trans, LoopState) {
+        self.check_sink();
         let mut tran = Trans::None;
         self.input_cache.current_duration = self.get_progress();
 
@@ -141,7 +157,17 @@ impl GameState for BeatMapEditor {
     fn render(&mut self, s: &mut StateData, ctx: &Context) -> Trans {
         let mut tran = Trans::None;
         self.render_top_panel(s, ctx);
-        self.render_top_audio_wave(s, ctx);
+        if self.current_editor != SubEditor::Settings {
+            self.render_top_audio_wave(s, ctx);
+        }
+
+        match self.current_editor {
+            SubEditor::Settings => {}
+            SubEditor::Beatmap => {}
+            SubEditor::Timing => {
+                self.render_timing_editor(s, ctx);
+            }
+        }
 
         self.render_bottom_progress(s, ctx);
 
@@ -167,13 +193,33 @@ impl BeatMapEditor {
         self.sink.try_seek(old_dur.mul_f32(old_speed / speed))
             .expect("Failed to fix duration");
     }
-    fn render_top_panel(&self, s: &mut StateData, ctx: &Context) {
+
+    fn render_top_panel(&mut self, s: &mut StateData, ctx: &Context) {
         let height = 100.0;
         egui::TopBottomPanel::new(TopBottomSide::Top, "editor_top_menu")
             .frame(Frame::none())
             .min_height(height)
             .show(ctx, |ui| {
                 let width = ui.available_width();
+
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    let button_height = ui.available_height() - ui.spacing().button_padding.y * 2.0 - ui.spacing().item_spacing.y * 2.0;
+                    let button = Button::new("Timing").selected(self.current_editor == SubEditor::Timing).min_size(Vec2::new(0.0, button_height));
+
+                    ui.add_space(ui.spacing().button_padding.x);
+                    if ui.add(button).clicked() {
+                        self.current_editor = SubEditor::Timing;
+                    }
+                    let button = Button::new("Beatmap").selected(self.current_editor == SubEditor::Beatmap).min_size(Vec2::new(0.0, button_height));
+                    if ui.add(button).clicked() {
+                        self.current_editor = SubEditor::Beatmap;
+                    }
+
+                    let button = Button::new("Settings").selected(self.current_editor == SubEditor::Settings).min_size(Vec2::new(0.0, button_height));
+                    if ui.add(button).clicked() {
+                        self.current_editor = SubEditor::Settings;
+                    }
+                });
             });
     }
 
@@ -181,12 +227,12 @@ impl BeatMapEditor {
         let height = 100.0;
         egui::TopBottomPanel::new(TopBottomSide::Top, "editor_top_progress")
             .frame(Frame::none())
-            .min_height(height)
+            .min_height(height + 25.0)
             .show(ctx, |ui| {
                 let width = ui.available_width();
                 let right_width = 250.0;
                 let progress_width = (width - right_width).ceil();
-                let start_point = ui.next_widget_position();
+                let start_point = ui.next_widget_position().add((0.0, 12.5).into());
                 let background_rect = Rect {
                     min: start_point,
                     max: (start_point.x + progress_width, start_point.y + height).into(),
@@ -257,7 +303,7 @@ impl BeatMapEditor {
 
                     let high = center_y - high.abs() * half_height;
                     let low = center_y + low.abs() * half_height;
-                    painter.vline(start_point.x + offset as f32, high..=low, PathStroke::new(3.0, Color32::GRAY));
+                    painter.vline(start_point.x + offset as f32, high..=low, PathStroke::new(1.125, Color32::GRAY));
                 });
 
                 // render current line
@@ -375,12 +421,23 @@ impl BeatMapEditor {
             });
     }
 
+    fn check_sink(&self) {
+        if self.sink.empty() {
+            let decoder = Decoder::new(self.sample_info.raw_data.clone())
+                .expect("We should not failed");
+
+            let samples = decoder.convert_samples::<f32>();
+
+            self.sink.append(samples);
+        }
+    }
 
     fn switch_play(&self) {
         if self.sink.is_paused() {
             if self.get_progress() + Duration::from_millis(1) >= self.total_duration {
                 self.sink.try_seek(Duration::new(0, 0)).expect("Seek failed");
             }
+
             self.sink.play();
         } else {
             self.sink.pause();

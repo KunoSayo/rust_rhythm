@@ -19,6 +19,7 @@ winit = "0.30.5"
 wgpu = "23.0.1"
 wgpu_text = "0.9.1"
 egui = "0.30.0"
+egui_extras = { version = "0.30"}
 egui-wgpu = "0.30.0"
 egui-winit = "0.30.0"
 profiling = "1.0.16"
