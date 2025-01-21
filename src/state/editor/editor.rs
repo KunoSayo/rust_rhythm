@@ -1,15 +1,16 @@
-use crate::engine::global::STATIC_DATA;
+use crate::engine::global::{IO_POOL, STATIC_DATA};
 use crate::engine::{GameState, LoopState, StateData, Trans};
 use crate::game::beatmap::file::SongBeatmapFile;
-use crate::game::beatmap::SongBeatmapInfo;
-use crate::game::song::SongInfo;
+use crate::game::beatmap::{SongBeatmapInfo, BEATMAP_EXT};
+use crate::game::secs_to_offset_type;
+use crate::game::song::{SongInfo, SongManagerResourceType};
 use anyhow::anyhow;
 use egui::epaint::PathStroke;
 use egui::panel::TopBottomSide;
 use egui::{Align, Button, Color32, Context, Frame, Label, Layout, NumExt, Rect, RichText, Sense, UiBuilder, Vec2};
 use rodio::{Decoder, OutputStreamHandle, Sink, Source};
 use std::io::{Cursor, Read};
-use std::ops::Add;
+use std::ops::{Add, Deref};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicI16, Ordering};
 use std::sync::Arc;
@@ -47,6 +48,7 @@ struct InputCache {
     escape_time: f32,
     current_duration: Duration,
     progress_half_time: f32,
+    select_timing_group: usize,
 }
 
 impl Default for InputCache {
@@ -55,6 +57,7 @@ impl Default for InputCache {
             escape_time: 0.0,
             current_duration: Default::default(),
             progress_half_time: 1.0,
+            select_timing_group: 0,
         }
     }
 }
@@ -162,7 +165,9 @@ impl GameState for BeatMapEditor {
         }
 
         match self.current_editor {
-            SubEditor::Settings => {}
+            SubEditor::Settings => {
+                self.render_settings_editor(s, ctx);
+            }
             SubEditor::Beatmap => {}
             SubEditor::Timing => {
                 self.render_timing_editor(s, ctx);
@@ -174,7 +179,38 @@ impl GameState for BeatMapEditor {
         tran
     }
 
-    fn stop(&mut self, s: &mut StateData) {}
+    fn stop(&mut self, s: &mut StateData) {
+
+        // Do save work
+        if self.save_path.is_none() &&
+            (self.song_beatmap_file.metadata.title.is_empty() || self.song_beatmap_file.metadata.version.is_empty()) {
+            return;
+        }
+        let path = self.save_path.get_or_insert_with(|| {
+            self.song_info.bgm_file.parent().unwrap()
+                .join(format!("{}[{}]", &self.song_beatmap_file.metadata.title, &self.song_beatmap_file.metadata.version)
+                    + "." + BEATMAP_EXT)
+        });
+        let path = path.clone();
+        let beatmap = self.song_beatmap_file.clone();
+        let info = self.song_info.clone();
+        let song_manager = s.wd.world.fetch::<SongManagerResourceType>().deref().clone();
+        IO_POOL.spawn_ok(async move {
+            if let Err(e) = beatmap.save_to(&path) {
+                log::error!("Failed to save beatmap for {:?}", e);
+            } else {
+                match info.reload() {
+                    Ok(new_info) => {
+                        song_manager.load_new_info(new_info);
+                        info.dirty.store(true, Ordering::Release);
+                    }
+                    Err(e) => {
+                        log::error!("Failed to load beatmap for {:?}", e);
+                    }
+                }
+            }
+        });
+    }
 }
 
 impl BeatMapEditor {
@@ -222,6 +258,7 @@ impl BeatMapEditor {
                 });
             });
     }
+
 
     fn render_top_audio_wave(&mut self, s: &mut StateData, ctx: &Context) {
         let height = 100.0;
@@ -305,6 +342,9 @@ impl BeatMapEditor {
                     let low = center_y + low.abs() * half_height;
                     painter.vline(start_point.x + offset as f32, high..=low, PathStroke::new(1.125, Color32::GRAY));
                 });
+
+                // render timings lines
+                let timing = self.song_beatmap_file.timing_group.get_timing(self.input_cache.select_timing_group, secs_to_offset_type(left_time));
 
                 // render current line
                 ui.painter().vline(start_point.x + progress_width * 0.5, start_point.y..=start_point.y + height, PathStroke::new(5.0, Color32::LIGHT_BLUE));

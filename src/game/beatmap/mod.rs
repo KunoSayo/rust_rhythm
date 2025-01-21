@@ -21,3 +21,9 @@ pub struct SongBeatmapInfo {
 }
 
 
+impl Default for MapRule {
+    fn default() -> Self {
+        Self::Falling
+    }
+}
+

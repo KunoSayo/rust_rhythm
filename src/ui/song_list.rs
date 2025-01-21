@@ -45,17 +45,17 @@ impl SongListUi {
         #[cfg(debug_assertions)]
         let old_y = ui.next_widget_position().y;
 
-        let button = Button::new(&beatmap.song_beatmap_file.metadata.title)
-            .fill(if self.song_select.get() == idx {
+        let button = Button::new(beatmap.song_beatmap_file.get_show_name())
+            .fill(if self.beatmap_select.get() == idx {
                 Color32::BLUE
             } else {
                 Color32::DARK_BLUE
             });
 
-        let song_width = if self.song_select.get() == idx {
-            300.0
+        let song_width = if self.beatmap_select.get() == idx {
+            250.0
         } else {
-            200.0
+            150.0
         };
 
 
@@ -127,7 +127,7 @@ impl SongListUi {
                 });
             }
             self.song_select.set(idx);
-            self.beatmap_select.set(self.songs.len() >> 1);
+            self.beatmap_select.set(song.maps.len() >> 1);
         }
         result
     }

@@ -4,10 +4,15 @@
 //!
 //! `SongBeatMap` represent real playing beatmap in the game.
 
-pub type MsType = u32;
+pub type MsType = i32;
 pub type OffsetType = MsType;
 
 pub mod note;
 pub mod song;
 pub mod beatmap;
 pub mod timing;
+
+
+pub fn secs_to_offset_type(sec: f32) -> OffsetType {
+    (sec * 1000.0).round() as OffsetType
+}

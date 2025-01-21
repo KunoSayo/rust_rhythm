@@ -2,7 +2,7 @@ use crate::game::OffsetType;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Ord, PartialOrd, PartialEq, Clone, Copy, Debug, Eq, Hash)]
-pub enum NoteType {
+pub enum NoteHitType {
     /// Click type
     Click,
     Slide,
@@ -12,16 +12,26 @@ pub enum NoteType {
 pub struct NormalNote {
     pub x: f32,
     pub time: OffsetType,
-    pub note_type: NoteType,
+    pub note_type: NoteHitType,
+
+}
+
+#[derive(Serialize, Deserialize, PartialOrd, PartialEq, Clone, Copy, Debug)]
+pub struct LongNote {
+    pub x: f32,
+    pub start_time: OffsetType,
+    pub end_time: OffsetType,
+    pub note_type: NoteHitType,
 
 }
 
 pub trait Note {
     fn get_x(&self) -> f32;
 
-    fn get_time(&self) -> u32;
+    // Get the start time
+    fn get_time(&self) -> OffsetType;
 
-    fn get_note_type(&self) -> NoteType;
+    fn get_note_type(&self) -> NoteHitType;
 }
 
 impl Note for NormalNote {
@@ -29,11 +39,25 @@ impl Note for NormalNote {
         self.x
     }
 
-    fn get_time(&self) -> u32 {
+    fn get_time(&self) -> OffsetType {
         self.time
     }
 
-    fn get_note_type(&self) -> NoteType {
+    fn get_note_type(&self) -> NoteHitType {
+        self.note_type
+    }
+}
+
+impl Note for LongNote {
+    fn get_x(&self) -> f32 {
+        self.x
+    }
+
+    fn get_time(&self) -> OffsetType {
+        self.start_time
+    }
+
+    fn get_note_type(&self) -> NoteHitType {
         self.note_type
     }
 }

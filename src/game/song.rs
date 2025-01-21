@@ -28,6 +28,87 @@ pub struct SongManager {
 
 pub type SongManagerResourceType = Arc<SongManager>;
 
+impl SongInfo {
+    fn supported_bgm_format() -> &'static [&'static str] {
+        &["mp3", "ogg"]
+    }
+
+    pub fn reload(&self) -> anyhow::Result<Self> {
+        Self::load(self.bgm_file.parent().ok_or(anyhow!("No bgm file parent"))?)
+    }
+
+    pub fn load(song_dir_path: &Path) -> anyhow::Result<Self> {
+        let title = song_dir_path.file_name().unwrap().to_string_lossy().to_string();
+
+        let bgm_file = Self::supported_bgm_format().iter().filter_map(|ext| {
+            let bgm_file = song_dir_path.join("bgm.".to_string() + ext);
+            if bgm_file.exists() && bgm_file.is_file() {
+                Some(bgm_file)
+            } else {
+                None
+            }
+        }).next();
+
+        let bgm_file = if let Some(f) = bgm_file {
+            f
+        } else {
+            return Err(anyhow!("No bgm found in {:?}", &song_dir_path))
+        };
+
+
+        let mut maps = std::fs::read_dir(&song_dir_path)?.par_bridge()
+            .filter_map(|x: std::io::Result<DirEntry>| {
+                match x {
+                    Ok(entry) => {
+                        if entry.path().is_file() && entry.path().extension().map(|x| x == BEATMAP_EXT).unwrap_or(false) {
+                            Some(entry)
+                        } else {
+                            None
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to read entry {:?}", e);
+                        None
+                    }
+                }
+            })
+            .map(|entry| -> anyhow::Result<SongBeatmapInfo> {
+                let data = std::fs::read(entry.path())?;
+                let deserializer = &mut ron::Deserializer::from_bytes(&data[..])?;
+                let beatmap = SongBeatmapFile::deserialize(deserializer)?;
+                let info = SongBeatmapInfo {
+                    file_path: entry.path(),
+                    song_beatmap_file: beatmap,
+                };
+                Ok(info)
+            })
+            .filter_map(|result| {
+                match result {
+                    Ok(x) => Some(x),
+                    Err(e) => {
+                        log::warn!("Failed to parse beatmap info, caused by {:?}", e);
+                        None
+                    }
+                }
+            })
+            .collect::<Vec<_>>();
+
+        std::fs::read_dir(&song_dir_path)?;
+
+        maps.sort_by(|x, y| x.song_beatmap_file.metadata.version
+            .cmp(&y.song_beatmap_file.metadata.version));
+
+        let song_info = SongInfo {
+            bgm_file,
+            title: title.clone(),
+            maps,
+            dirty: Default::default(),
+        };
+
+        Ok(song_info)
+    }
+}
+
 impl SongManager {
     fn get_root() -> PathBuf {
         std::env::current_dir()
@@ -35,10 +116,6 @@ impl SongManager {
             .join("songs")
     }
 
-
-    fn supported_bgm_format() -> &'static [&'static str] {
-        &["mp3", "ogg"]
-    }
 
     pub fn init_manager() -> anyhow::Result<Self> {
         let root = Self::get_root();
@@ -67,73 +144,11 @@ impl SongManager {
                 }
             })
             .map(|x: DirEntry| -> anyhow::Result<()> {
-                let dir_path = x.path();
+                let song_dir_path = x.path();
 
-                let title = dir_path.file_name().unwrap().to_string_lossy().to_string();
+                let song_info = SongInfo::load(&song_dir_path)?;
 
-                let bgm_file = Self::supported_bgm_format().iter().filter_map(|ext| {
-                    let bgm_file = dir_path.join("bgm.".to_string() + ext);
-                    if bgm_file.exists() && bgm_file.is_file() {
-                        Some(bgm_file)
-                    } else {
-                        None
-                    }
-                }).next();
-
-                let bgm_file = if let Some(f) = bgm_file {
-                    f
-                } else {
-                    return Err(anyhow!("No bgm found in {:?}", &dir_path))
-                };
-
-
-                let maps = std::fs::read_dir(&dir_path)?.par_bridge()
-                    .filter_map(|x: std::io::Result<DirEntry>| {
-                        match x {
-                            Ok(entry) => {
-                                if entry.path().is_file() && entry.path().ends_with(BEATMAP_EXT) {
-                                    Some(entry)
-                                } else {
-                                    None
-                                }
-                            }
-                            Err(e) => {
-                                log::warn!("Failed to read entry {:?}", e);
-                                None
-                            }
-                        }
-                    })
-                    .map(|entry| -> anyhow::Result<SongBeatmapInfo> {
-                        let data = std::fs::read(entry.path())?;
-                        let deserializer = &mut ron::Deserializer::from_bytes(&data[..])?;
-                        let beatmap = SongBeatmapFile::deserialize(deserializer)?;
-                        let info = SongBeatmapInfo {
-                            file_path: entry.path(),
-                            song_beatmap_file: beatmap,
-                        };
-                        Ok(info)
-                    })
-                    .filter_map(|result| {
-                        match result {
-                            Ok(x) => Some(x),
-                            Err(e) => {
-                                log::warn!("Failed to parse beatmap info, caused by {:?}", e);
-                                None
-                            }
-                        }
-                    })
-                    .collect();
-
-                std::fs::read_dir(&dir_path)?;
-
-                let song_info = SongInfo {
-                    bgm_file,
-                    title: title.clone(),
-                    maps,
-                    dirty: Default::default(),
-                };
-
-                this.songs.insert(title, song_info.into());
+                this.songs.insert(song_info.title.clone(), song_info.into());
 
                 Ok(())
             }).for_each(|x| {
@@ -143,6 +158,10 @@ impl SongManager {
         });
 
         Ok(this)
+    }
+
+    pub fn load_new_info(&self, info: SongInfo) {
+        self.songs.insert(info.title.clone(), info.into());
     }
 
     pub fn import_song(&self, song: &Path) -> anyhow::Result<Arc<SongInfo>> {
@@ -155,7 +174,7 @@ impl SongManager {
             }
         };
 
-        if !Self::supported_bgm_format().iter().any(|x| ext == *x) {
+        if !SongInfo::supported_bgm_format().iter().any(|x| ext == *x) {
             return Err(anyhow!("Unsupported format for {}", filename));
         }
 

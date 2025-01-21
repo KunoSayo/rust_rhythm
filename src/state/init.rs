@@ -7,7 +7,7 @@ use once_cell::sync::Lazy;
 use wgpu::{Device, Queue};
 
 use crate::engine::global::{INITED, IO_POOL, STATIC_DATA};
-use crate::engine::{GameState, LoopState, ResourceManager, StateData, StateEvent, Trans, WaitFutureState, WaitResult};
+use crate::engine::{GameState, LoopState, StateData, StateEvent, Trans, WaitFutureState, WaitResult};
 use crate::game::song::SongManager;
 
 pub struct InitState {
