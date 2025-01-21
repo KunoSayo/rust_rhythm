@@ -149,7 +149,7 @@ impl TimingGroup {
     pub fn get_beat_iterator(&self, group_index: usize, start_offset: OffsetType) -> TimingGroupBeatIterator {
         TimingGroupBeatIterator {
             timing_group: self,
-            last_timing: std::cell::Cell::new(self.get_timing(group_index, start_offset)),
+            last_timing: self.get_timing(group_index, start_offset),
             group_idx: group_index,
             last_beat: Err(start_offset),
         }
@@ -158,7 +158,7 @@ impl TimingGroup {
 
 pub struct TimingGroupBeatIterator<'a> {
     timing_group: &'a TimingGroup,
-    last_timing: std::cell::Cell<&'a Timing>,
+    last_timing: &'a Timing,
     group_idx: usize,
     /// The last beat or the start offset time
     last_beat: Result<Beat, OffsetType>,
@@ -170,17 +170,17 @@ impl<'a> Iterator for TimingGroupBeatIterator<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         let result = match self.last_beat {
             Ok(beat) => {
-                let next_beat = self.last_timing.get().get_next_beat_by_beat(&beat);
+                let next_beat = self.last_timing.get_next_beat_by_beat(&beat);
                 let maybe_next_timing = self.timing_group.get_timing(self.group_idx, next_beat.time);
-                if self.last_timing.get().is_same_by_addr(maybe_next_timing) {
+                if self.last_timing.is_same_by_addr(maybe_next_timing) {
                     next_beat
                 } else {
-                    self.last_timing.set(maybe_next_timing);
-                    self.last_timing.get().get_left_beat(next_beat.time)
+                    self.last_timing = maybe_next_timing;
+                    self.last_timing.get_left_beat(next_beat.time)
                 }
             }
             Err(start_time) => {
-                self.last_timing.get().get_left_beat(start_time)
+                self.last_timing.get_left_beat(start_time)
             }
         };
 
