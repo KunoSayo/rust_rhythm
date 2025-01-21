@@ -33,9 +33,9 @@ impl Into<f32> for Bpm {
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, Ord, PartialOrd, PartialEq, Eq, Hash)]
 pub struct Beat {
-    number: i32,
-    is_measure: bool,
-    time: OffsetType,
+    pub number: i32,
+    pub is_measure: bool,
+    pub time: OffsetType,
 }
 
 /// The timing event

@@ -2,15 +2,15 @@ use crate::engine::global::{IO_POOL, STATIC_DATA};
 use crate::engine::{GameState, LoopState, StateData, Trans};
 use crate::game::beatmap::file::SongBeatmapFile;
 use crate::game::beatmap::{SongBeatmapInfo, BEATMAP_EXT};
-use crate::game::secs_to_offset_type;
 use crate::game::song::{SongInfo, SongManagerResourceType};
+use crate::game::secs_to_offset_type;
 use anyhow::anyhow;
 use egui::epaint::PathStroke;
 use egui::panel::TopBottomSide;
-use egui::{Align, Button, Color32, Context, Frame, Label, Layout, NumExt, Rect, RichText, Sense, UiBuilder, Vec2};
+use egui::{Align, Button, Color32, Context, Frame, Label, Layout, NumExt, Pos2, Rect, RichText, Sense, UiBuilder, Vec2};
 use rodio::{Decoder, OutputStreamHandle, Sink, Source};
 use std::io::{Cursor, Read};
-use std::ops::{Add, Deref};
+use std::ops::{Add, ControlFlow, Deref};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicI16, Ordering};
 use std::sync::Arc;
@@ -36,7 +36,7 @@ pub struct BeatMapEditor {
     save_path: Option<PathBuf>,
     total_duration: Duration,
     sink: Sink,
-    input_cache: InputCache,
+    pub(in crate::state::editor) input_cache: InputCache,
 
     sample_info: SongSampleInfo,
 
@@ -44,11 +44,11 @@ pub struct BeatMapEditor {
 }
 
 
-struct InputCache {
-    escape_time: f32,
-    current_duration: Duration,
-    progress_half_time: f32,
-    select_timing_group: usize,
+pub(in crate::state::editor) struct InputCache {
+    pub(in crate::state::editor) escape_time: f32,
+    pub(in crate::state::editor) current_duration: Duration,
+    pub(in crate::state::editor) progress_half_time: f32,
+    pub(in crate::state::editor) select_timing_group: usize,
 }
 
 impl Default for InputCache {
@@ -164,6 +164,8 @@ impl GameState for BeatMapEditor {
             self.render_top_audio_wave(s, ctx);
         }
 
+        self.render_bottom_progress(s, ctx);
+
         match self.current_editor {
             SubEditor::Settings => {
                 self.render_settings_editor(s, ctx);
@@ -173,8 +175,6 @@ impl GameState for BeatMapEditor {
                 self.render_timing_editor(s, ctx);
             }
         }
-
-        self.render_bottom_progress(s, ctx);
 
         tran
     }
@@ -267,6 +267,7 @@ impl BeatMapEditor {
             .min_height(height + 25.0)
             .show(ctx, |ui| {
                 let width = ui.available_width();
+                let ui_height = ui.available_height();
                 let right_width = 250.0;
                 let progress_width = (width - right_width).ceil();
                 let start_point = ui.next_widget_position().add((0.0, 12.5).into());
@@ -274,6 +275,15 @@ impl BeatMapEditor {
                     min: start_point,
                     max: (start_point.x + progress_width, start_point.y + height).into(),
                 };
+
+                let wave_area_rect = Rect {
+                    min: Pos2::new(start_point.x, start_point.y - 12.5),
+                    max: (start_point.x + progress_width, start_point.y - 12.5 + ui_height).into(),
+                };
+                let raw_clip_rect = ui.clip_rect();
+                // Clip to the wave area.
+                ui.set_clip_rect(wave_area_rect);
+
                 let response = ui.allocate_rect(background_rect, Sense::hover());
                 if response.hover_pos().is_some() {
                     ui.input(|input| {
@@ -287,11 +297,16 @@ impl BeatMapEditor {
                 let now = self.input_cache.current_duration.as_secs_f32();
                 let right_time = now + self.input_cache.progress_half_time;
                 let left_time = now - (right_time - now);
+                let time_len = right_time - left_time;
 
                 let mut vec = Vec::new();
 
                 // min, max
                 vec.resize_with(progress_width as usize, || (AtomicI16::new(0), AtomicI16::new(0)));
+
+                let time_to_wave_x = |time: f32| {
+                    (time - left_time) * progress_width / time_len + start_point.x
+                };
 
                 let raw_left_sample_idx = (left_time * self.sample_info.sample_rate as f32) as isize;
                 let left_sample_idx = raw_left_sample_idx.at_least(0) as usize;
@@ -340,14 +355,38 @@ impl BeatMapEditor {
 
                     let high = center_y - high.abs() * half_height;
                     let low = center_y + low.abs() * half_height;
-                    painter.vline(start_point.x + offset as f32, high..=low, PathStroke::new(1.125, Color32::GRAY));
+                    let color = Color32::from_rgb(108, 172, 200);
+                    painter.vline(start_point.x + offset as f32, high..=low, PathStroke::new(1.125, color));
                 });
 
                 // render timings lines
-                let timing = self.song_beatmap_file.timing_group.get_timing(self.input_cache.select_timing_group, secs_to_offset_type(left_time));
+
+                self.song_beatmap_file.timing_group
+                    .get_beat_iterator(self.input_cache.select_timing_group, secs_to_offset_type(left_time))
+                    .filter(|x| x.number >= 0)
+                    .try_for_each(|beat| {
+                        let beat_x = time_to_wave_x(beat.time as f32 / 1000.0);
+                        if beat_x > start_point.x + progress_width + 5.0 {
+                            return ControlFlow::Break(());
+                        }
+                        let width = if beat.is_measure { 3.0 } else { 2.0 };
+                        let range = if beat.is_measure {
+                            start_point.y - 6.25..=start_point.y + height + 6.25
+                        } else {
+                            start_point.y..=start_point.y + height
+                        };
+                        let color = Color32::from_gray(if beat.is_measure { 233 } else { 222 });
+                        ui.painter().vline(beat_x, range, PathStroke::new(width, color));
+
+                        ControlFlow::Continue(())
+                    });
+
+                ui.set_clip_rect(raw_clip_rect);
+
 
                 // render current line
-                ui.painter().vline(start_point.x + progress_width * 0.5, start_point.y..=start_point.y + height, PathStroke::new(5.0, Color32::LIGHT_BLUE));
+                ui.painter().vline(start_point.x + progress_width * 0.5, start_point.y - 12.5..=start_point.y - 12.5 + ui_height,
+                                   PathStroke::new(5.0, Color32::LIGHT_BLUE));
             });
     }
 
@@ -485,8 +524,12 @@ impl BeatMapEditor {
     }
 }
 
-fn format_duration(dur: &Duration) -> String {
+pub fn format_duration(dur: &Duration) -> String {
     let ms = dur.as_millis();
+    format_ms(ms as i128)
+}
+
+pub fn format_ms(ms: i128) -> String {
     let s = ms / 1000;
     let min = s / 60;
 
