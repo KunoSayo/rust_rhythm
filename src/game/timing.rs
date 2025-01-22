@@ -2,6 +2,7 @@ use crate::game::OffsetType;
 use egui::NumExt;
 use serde::{Deserialize, Serialize};
 use std::convert::Into;
+use std::fmt::{Display, Formatter};
 use std::num::NonZeroU8;
 
 // Store bpm with 100 times
@@ -68,8 +69,9 @@ pub struct TimingLine {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TimingGroup {
-    pub timings: Vec<TimingLine>,
+    pub timing_lines: Vec<TimingLine>,
 }
+
 
 impl Timing {
     /// Return the left beat (or self) at the time
@@ -105,6 +107,13 @@ impl Timing {
     pub fn is_same_by_addr(&self, other: &Timing) -> bool {
         std::ptr::addr_eq(self as _, other as _)
     }
+
+    pub fn create_from_offset(offset: OffsetType) -> Self {
+        Self {
+            offset,
+            ..Default::default()
+        }
+    }
 }
 
 impl TimingLine {
@@ -118,48 +127,52 @@ impl TimingLine {
 impl TimingGroup {
     pub fn new() -> Self {
         Self {
-            timings: vec![TimingLine::default()],
+            timing_lines: vec![TimingLine::default()],
         }
     }
 
     /// Return the timing in the group by the offset.
     /// if there no such group or something else, return the timing or default timing.
-    pub fn get_timing(&self, group_index: usize, offset: OffsetType) -> &Timing {
-        if let Some(tl) = self.timings.get(group_index) {
+    pub fn get_timing(&self, group_index: usize, offset: OffsetType) -> &[Timing] {
+        if let Some(tl) = self.timing_lines.get(group_index) {
             let t = if tl.timings.is_empty() {
-                &DEFAULT_TIMING
+                &[DEFAULT_TIMING][..]
             } else {
                 match tl.timings.binary_search_by_key(&offset, |x| x.offset) {
-                    Ok(idx) => &tl.timings[idx],
+                    Ok(idx) => &tl.timings[idx..],
                     Err(idx) => {
                         if idx == 0 {
-                            &tl.timings[0]
+                            &tl.timings[0..]
                         } else {
-                            &tl.timings[idx - 1]
+                            &tl.timings[idx - 1..]
                         }
                     }
                 }
             };
             t
         } else {
-            &DEFAULT_TIMING
+            &[DEFAULT_TIMING][..]
+        }
+    }
+
+    pub fn has_timing(&self, group_index: usize, offset: OffsetType) -> bool {
+        if let Some(tl) = self.timing_lines.get(group_index) {
+            tl.timings.binary_search_by_key(&offset, |x| x.offset).is_ok()
+        } else {
+            false
         }
     }
 
     pub fn get_beat_iterator(&self, group_index: usize, start_offset: OffsetType) -> TimingGroupBeatIterator {
         TimingGroupBeatIterator {
-            timing_group: self,
             last_timing: self.get_timing(group_index, start_offset),
-            group_idx: group_index,
             last_beat: Err(start_offset),
         }
     }
 }
 
 pub struct TimingGroupBeatIterator<'a> {
-    timing_group: &'a TimingGroup,
-    last_timing: &'a Timing,
-    group_idx: usize,
+    last_timing: &'a [Timing],
     /// The last beat or the start offset time
     last_beat: Result<Beat, OffsetType>,
 }
@@ -170,21 +183,26 @@ impl<'a> Iterator for TimingGroupBeatIterator<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         let result = match self.last_beat {
             Ok(beat) => {
-                let next_beat = self.last_timing.get_next_beat_by_beat(&beat);
-                let maybe_next_timing = self.timing_group.get_timing(self.group_idx, next_beat.time);
-                if self.last_timing.is_same_by_addr(maybe_next_timing) {
-                    next_beat
+                let next_beat = self.last_timing[0].get_next_beat_by_beat(&beat);
+                if self.last_timing.len() > 1 && next_beat.time >= self.last_timing[1].offset {
+                    self.last_timing = &self.last_timing[1..];
+                    self.last_timing[0].get_left_beat(self.last_timing[0].offset)
                 } else {
-                    self.last_timing = maybe_next_timing;
-                    self.last_timing.get_left_beat(next_beat.time)
+                    next_beat
                 }
             }
             Err(start_time) => {
-                self.last_timing.get_left_beat(start_time)
+                self.last_timing[0].get_left_beat(start_time)
             }
         };
 
         self.last_beat = Ok(result);
         Some(result)
+    }
+}
+
+impl Display for Bpm {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}.{:02}", self.0 / 100, self.0 % 100)
     }
 }

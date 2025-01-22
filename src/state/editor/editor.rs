@@ -2,8 +2,8 @@ use crate::engine::global::{IO_POOL, STATIC_DATA};
 use crate::engine::{GameState, LoopState, StateData, Trans};
 use crate::game::beatmap::file::SongBeatmapFile;
 use crate::game::beatmap::{SongBeatmapInfo, BEATMAP_EXT};
-use crate::game::song::{SongInfo, SongManagerResourceType};
 use crate::game::secs_to_offset_type;
+use crate::game::song::{SongInfo, SongManagerResourceType};
 use anyhow::anyhow;
 use egui::epaint::PathStroke;
 use egui::panel::TopBottomSide;
@@ -30,6 +30,8 @@ pub enum SubEditor {
     Beatmap,
     Timing,
 }
+
+
 pub struct BeatMapEditor {
     pub song_info: Arc<SongInfo>,
     pub song_beatmap_file: SongBeatmapFile,
@@ -49,6 +51,7 @@ pub(in crate::state::editor) struct InputCache {
     pub(in crate::state::editor) current_duration: Duration,
     pub(in crate::state::editor) progress_half_time: f32,
     pub(in crate::state::editor) select_timing_group: usize,
+    pub(in crate::state::editor) select_timing_row: Option<usize>,
 }
 
 impl Default for InputCache {
@@ -58,6 +61,7 @@ impl Default for InputCache {
             current_duration: Default::default(),
             progress_half_time: 1.0,
             select_timing_group: 0,
+            select_timing_row: None,
         }
     }
 }

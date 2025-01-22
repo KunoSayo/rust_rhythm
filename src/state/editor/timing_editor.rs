@@ -1,11 +1,18 @@
 use crate::engine::StateData;
-use crate::state::editor::editor::BeatMapEditor;
+use crate::game::timing::Timing;
+use crate::game::OffsetType;
+use crate::state::editor::editor::{format_ms, BeatMapEditor};
 use egui::panel::Side;
-use egui::{Button, Frame};
+use egui::{Button, Frame, NumExt};
 use egui_extras::Column;
 
 impl BeatMapEditor {
     pub fn render_timing_editor(&mut self, s: &mut StateData, ctx: &egui::Context) {
+        let mut op: std::cell::Cell<Option<Box<dyn FnOnce(&mut Self)>>> = Default::default();
+        let last_selected_group = self.input_cache.select_timing_group;
+        let last_selected_row = self.input_cache.select_timing_row;
+        let now = self.input_cache.current_duration.as_millis() as OffsetType;
+
         egui::SidePanel::new(Side::Left, "timing_left")
             .frame(Frame::none())
             .max_width(200.0)
@@ -16,8 +23,7 @@ impl BeatMapEditor {
                         ui.set_max_width(200.0);
                         ui.vertical_centered(|ui| {
                             let current_selected = self.input_cache.select_timing_group;
-                            let mut op: std::cell::Cell<Option<Box<dyn FnOnce(&mut Self)>>> = Default::default();
-                            for (idx, _) in self.song_beatmap_file.timing_group.timings.iter().enumerate() {
+                            for (idx, _) in self.song_beatmap_file.timing_group.timing_lines.iter().enumerate() {
                                 // We battle with borrow checker....
                                 ui.set_max_width(200.0);
                                 egui::Sides::new()
@@ -44,19 +50,17 @@ impl BeatMapEditor {
                                                         this.input_cache.select_timing_group = this.input_cache.select_timing_group
                                                             .saturating_sub(1)
                                                     }
-                                                    this.song_beatmap_file.timing_group.timings.remove(idx);
+                                                    this.song_beatmap_file.timing_group.timing_lines.remove(idx);
                                                 })));
                                             }
                                         });
                                     });
                             }
-                            if let Some(op) = op.get_mut().take() {
-                                op(self)
-                            }
+
 
                             ui.centered_and_justified(|ui| {
                                 if ui.add(Button::new("+")).clicked() {
-                                    self.song_beatmap_file.timing_group.timings.push(Default::default());
+                                    self.song_beatmap_file.timing_group.timing_lines.push(Default::default());
                                 }
                             })
                         })
@@ -69,10 +73,13 @@ impl BeatMapEditor {
                     .size
                     .max(ui.spacing().interact_size.y);
 
+                let ui_height = ui.available_height();
+                let table_height = ui_height - 150.0;
                 let table = egui_extras::TableBuilder::new(ui)
                     .striped(true)
                     .resizable(false)
                     .cell_layout(egui::Layout::left_to_right(egui::Align::Center))
+                    .max_scroll_height(table_height)
                     .column(Column::auto().at_least(200.0))
                     .column(Column::remainder());
 
@@ -87,10 +94,45 @@ impl BeatMapEditor {
                         ui.heading("ATTRIBUTES");
                     });
                 }).body(|mut body| {
-                    body.rows(text_height, 0, |mut row| {
-                        let idx = row.index();
-                    })
+                    if let Some(tl) = self.song_beatmap_file.timing_group.timing_lines.get(self.input_cache.select_timing_group) {
+                        body.rows(text_height, tl.timings.len(), |mut row| {
+                            let idx = row.index();
+                            let timing = &tl.timings[idx];
+                            row.set_selected(self.input_cache.select_timing_row.map(|x| x == idx).unwrap_or(false));
+                            row.col(|ui| {
+                                ui.label(format_ms(timing.offset as i128));
+                            });
+                            row.col(|ui| {
+                                ui.label(format!("BPM: {}", timing.bpm));
+                            });
+
+                            if row.response().clicked() {
+                                self.input_cache.select_timing_row = Some(idx);
+                            }
+                        })
+                    } else {
+                        body.rows(text_height, 0, |_| {});
+                    }
                 });
+
+                let the_space = (table_height - result.content_size.y).at_least(0.0);
+                ui.add_space(the_space);
+
+                let same_time_with_timing = self.song_beatmap_file.timing_group.has_timing(last_selected_group, now);
+                egui::Sides::new()
+                    .show(ui, |ui| {}, |ui| {
+                        if ui.add_enabled(!same_time_with_timing, Button::new("Add").min_size([200.0, 100.0].into())).clicked() {
+                            op.set(Some(Box::new(|this| {
+                                if let Some(group) = this.song_beatmap_file.timing_group.timing_lines.get_mut(this.input_cache.select_timing_group) {
+                                    group.add_new(Timing::create_from_offset(this.input_cache.current_duration.as_millis() as OffsetType))
+                                }
+                            })));
+                        }
+                    });
             });
+
+        if let Some(op) = op.get_mut().take() {
+            op(self)
+        }
     }
 }
