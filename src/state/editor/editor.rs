@@ -34,7 +34,7 @@ pub enum SubEditor {
 
 pub struct BeatMapEditor {
     pub song_info: Arc<SongInfo>,
-    pub song_beatmap_file: SongBeatmapFile,
+    pub beatmap: SongBeatmapFile,
     save_path: Option<PathBuf>,
     total_duration: Duration,
     sink: Sink,
@@ -112,7 +112,7 @@ impl BeatMapEditor {
 
         let current_editor = SubEditor::Timing;
         Ok(Self {
-            song_beatmap_file: info.map(|x| x.song_beatmap_file).unwrap_or(SongBeatmapFile::new(song_info.title.clone())),
+            beatmap: info.map(|x| x.song_beatmap_file).unwrap_or(SongBeatmapFile::new(song_info.title.clone())),
             song_info,
             sink,
             save_path: path,
@@ -187,16 +187,16 @@ impl GameState for BeatMapEditor {
 
         // Do save work
         if self.save_path.is_none() &&
-            (self.song_beatmap_file.metadata.title.is_empty() || self.song_beatmap_file.metadata.version.is_empty()) {
+            (self.beatmap.metadata.title.is_empty() || self.beatmap.metadata.version.is_empty()) {
             return;
         }
         let path = self.save_path.get_or_insert_with(|| {
             self.song_info.bgm_file.parent().unwrap()
-                .join(format!("{}[{}]", &self.song_beatmap_file.metadata.title, &self.song_beatmap_file.metadata.version)
+                .join(format!("{}[{}]", &self.beatmap.metadata.title, &self.beatmap.metadata.version)
                     + "." + BEATMAP_EXT)
         });
         let path = path.clone();
-        let beatmap = self.song_beatmap_file.clone();
+        let beatmap = self.beatmap.clone();
         let info = self.song_info.clone();
         let song_manager = s.wd.world.fetch::<SongManagerResourceType>().deref().clone();
         IO_POOL.spawn_ok(async move {
@@ -365,7 +365,7 @@ impl BeatMapEditor {
 
                 // render timings lines
 
-                self.song_beatmap_file.timing_group
+                self.beatmap.timing_group
                     .get_beat_iterator(self.input_cache.select_timing_group, secs_to_offset_type(left_time))
                     .filter(|x| x.number >= 0)
                     .try_for_each(|beat| {

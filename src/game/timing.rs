@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::convert::Into;
 use std::fmt::{Display, Formatter};
 use std::num::NonZeroU8;
+use std::str::FromStr;
 
 // Store bpm with 100 times
 #[derive(Copy, Clone, Debug, Serialize, Deserialize)]
@@ -14,6 +15,20 @@ impl From<f32> for Bpm {
         Self {
             0: (value * 100.0).round().at_least(1.0) as i32,
         }
+    }
+}
+
+impl FromStr for Bpm {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut it = s.trim().split(".");
+        let first = it.next().ok_or(())?.parse::<u32>().map_err(|_| ())?;
+        let part = it.next().map(|x| x.chars().take(2).collect::<String>().parse::<u32>())
+            .unwrap_or(Ok(0)).map_err(|_| ())?;
+        Ok(Bpm {
+            0: (first * 100) as i32 + part as i32,
+        })
     }
 }
 
@@ -131,9 +146,9 @@ impl TimingGroup {
         }
     }
 
-    /// Return the timing in the group by the offset.
-    /// if there no such group or something else, return the timing or default timing.
-    pub fn get_timing(&self, group_index: usize, offset: OffsetType) -> &[Timing] {
+    /// Return the timing slice that first element offset is less equal than the given offset in the group by the offset.
+    /// if there no such group or timing, return the next timing slice or default timing.
+    pub fn get_timings(&self, group_index: usize, offset: OffsetType) -> &[Timing] {
         if let Some(tl) = self.timing_lines.get(group_index) {
             let t = if tl.timings.is_empty() {
                 &[DEFAULT_TIMING][..]
@@ -155,6 +170,14 @@ impl TimingGroup {
         }
     }
 
+    pub fn get_timing_by_idx(&mut self, group_index: usize, idx: usize) -> Option<&mut Timing> {
+        if let Some(tl) = self.timing_lines.get_mut(group_index) {
+            tl.timings.get_mut(idx)
+        } else {
+            None
+        }
+    }
+
     pub fn has_timing(&self, group_index: usize, offset: OffsetType) -> bool {
         if let Some(tl) = self.timing_lines.get(group_index) {
             tl.timings.binary_search_by_key(&offset, |x| x.offset).is_ok()
@@ -165,7 +188,7 @@ impl TimingGroup {
 
     pub fn get_beat_iterator(&self, group_index: usize, start_offset: OffsetType) -> TimingGroupBeatIterator {
         TimingGroupBeatIterator {
-            last_timing: self.get_timing(group_index, start_offset),
+            last_timing: self.get_timings(group_index, start_offset),
             last_beat: Err(start_offset),
         }
     }
