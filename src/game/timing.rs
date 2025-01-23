@@ -87,7 +87,6 @@ pub struct TimingGroup {
     pub timing_lines: Vec<TimingLine>,
 }
 
-
 impl Timing {
     /// Return the left beat (or self) at the time
     pub fn get_left_beat(&self, time: OffsetType) -> Beat {
@@ -95,9 +94,9 @@ impl Timing {
 
         // beat interval (ms) = 60 * 1000ms / (bpm / 100)
         //                    = 60 * 1000 * 100 / bpm
-        // delta / interval (number)   = delta * bpm / 60 / 1000 / 1000
+        // delta / interval (number)   = delta * bpm / 60 / 1000 / 100
 
-        let number = (delta as i64 * self.bpm.0 as i64 / 60 / 1000 / 1000) as i32;
+        let number = (delta as i64 * self.bpm.0 as i64 / 60 / 1000 / 100) as i32;
         let is_measure = (number % self.time_signature.get() as i32) == 0;
         let beat_time = self.get_beat_time(number);
         Beat {
@@ -108,7 +107,8 @@ impl Timing {
     }
 
     pub fn get_beat_time(&self, number: i32) -> OffsetType {
-        self.offset + number * 60 * 1000 * 100 / self.bpm.0
+        self.offset + (number as i64).checked_mul(60 * 1000 * 100)
+            .expect("Get beat time overflow!") / self.bpm.0 as i64
     }
 
     pub fn get_next_beat_by_beat(&self, cur_beat: &Beat) -> Beat {
@@ -170,11 +170,37 @@ impl TimingGroup {
         }
     }
 
+    /// Return (left beat, now beat, right beat)
+    pub fn get_near_beat(&self, group_index: usize, offset: OffsetType) -> (Beat, Option<Beat>, Beat) {
+        let mut it = self.get_beat_iterator(group_index, offset);
+        let mut now = None;
+        let (left, right) = {
+            let beat = it.next().unwrap();
+            if beat.time == offset {
+                now = Some(beat);
+                let tl = self.get_timings(group_index, offset - 1);
+                let left = tl[0].get_left_beat(offset - 1);
+                (left, it.next().unwrap())
+            } else {
+                // left right
+                (beat, it.next().unwrap())
+            }
+        };
+
+        (left, now, right)
+    }
+
     pub fn get_timing_by_idx(&mut self, group_index: usize, idx: usize) -> Option<&mut Timing> {
         if let Some(tl) = self.timing_lines.get_mut(group_index) {
             tl.timings.get_mut(idx)
         } else {
             None
+        }
+    }
+
+    pub fn delete_timing(&mut self, group_index: usize, row: usize) {
+        if let Some(tl) = self.timing_lines.get_mut(group_index) {
+            tl.timings.remove(row);
         }
     }
 

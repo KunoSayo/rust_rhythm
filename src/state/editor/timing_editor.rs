@@ -1,9 +1,9 @@
-use crate::engine::StateData;
+use crate::engine::{get_edit_cache, StateData};
 use crate::game::timing::{Bpm, Timing};
 use crate::game::OffsetType;
 use crate::state::editor::editor::{format_ms, BeatMapEditor};
 use egui::panel::Side;
-use egui::{Button, Frame, NumExt, Sense, TextEdit};
+use egui::{Button, Frame, NumExt, Sense};
 use egui_extras::Column;
 
 impl BeatMapEditor {
@@ -12,6 +12,7 @@ impl BeatMapEditor {
         let last_selected_group = self.input_cache.select_timing_group;
         let last_selected_row = self.input_cache.select_timing_row;
         let now = self.input_cache.current_duration.as_millis() as OffsetType;
+
 
         egui::SidePanel::new(Side::Left, "timing_left")
             .frame(Frame::none())
@@ -76,16 +77,25 @@ impl BeatMapEditor {
                     if let Some(selected_row) = last_selected_row {
                         if let Some(tl) = self.beatmap.timing_group.get_timing_by_idx(self.input_cache.select_timing_group, selected_row) {
                             ui.label("BPM: ");
+
+                            const ID: &'static str = "BPM_EDIT";
+
+                            let mut cache = get_edit_cache();
+
                             let mut bpm_str = tl.bpm.to_string();
-                            let text_edit = TextEdit::singleline(&mut bpm_str);
+                            let response = if cache.is_editing(ID) {
+                                ui.text_edit_singleline(&mut cache.text)
+                            } else {
+                                ui.text_edit_singleline(&mut bpm_str)
+                            };
 
-                            // todo: change bpm..
-
-                            let response = ui.text_edit_singleline(&mut bpm_str);
-                            if response.lost_focus() {
-                                if let Ok(bpm) = bpm_str.parse::<Bpm>() {
+                            if response.has_focus() {
+                                cache.edit(&bpm_str, ID);
+                            } else if response.lost_focus() {
+                                if let Ok(bpm) = cache.text.parse::<Bpm>() {
                                     tl.bpm = bpm;
                                 }
+                                cache.release();
                             }
                         }
                     }
@@ -152,7 +162,23 @@ impl BeatMapEditor {
 
                 let same_time_with_timing = self.beatmap.timing_group.has_timing(last_selected_group, now);
                 egui::Sides::new()
-                    .show(ui, |ui| {}, |ui| {
+                    .show(ui, |ui| {
+                        let result = last_selected_row
+                            .map(|x| self.beatmap.timing_group.get_timing_by_idx(last_selected_group, x))
+                            .flatten();
+
+                        match result {
+                            Some(timing) => {
+                                if ui.add_enabled(true, Button::new("Del").min_size([200.0, 100.0].into())).clicked() {
+                                    self.beatmap.timing_group.delete_timing(self.input_cache.select_timing_group, self.input_cache.select_timing_row.unwrap());
+                                    self.input_cache.select_timing_row = None;
+                                }
+                            }
+                            None => {
+                                ui.add_enabled(false, Button::new("Del").min_size([200.0, 100.0].into()));
+                            }
+                        }
+                    }, |ui| {
                         if ui.add_enabled(!same_time_with_timing, Button::new("Add").min_size([200.0, 100.0].into())).clicked() {
                             op.set(Some(Box::new(|this| {
                                 if let Some(group) = this.beatmap.timing_group.timing_lines.get_mut(this.input_cache.select_timing_group) {

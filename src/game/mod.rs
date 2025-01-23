@@ -4,7 +4,7 @@
 //!
 //! `SongBeatMap` represent real playing beatmap in the game.
 
-pub type MsType = i32;
+pub type MsType = i64;
 pub type OffsetType = MsType;
 
 pub mod note;

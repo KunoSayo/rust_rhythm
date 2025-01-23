@@ -119,11 +119,14 @@ macro_rules! get_state {
 impl WindowInstance {
     fn loop_once(&mut self, wd: &mut GlobalData) {
         profiling::scope!("Loop logic once");
-        self.loop_info.loop_state = LoopState::WAIT_ALL;
-
-        self.app.inputs.swap_frame();
         let now = std::time::Instant::now();
         let dt = now.duration_since(self.app.last_update_time).as_secs_f32();
+        
+        
+        self.loop_info.loop_state.reset(0.0);
+
+        self.app.inputs.swap_frame();
+        
         {
             let mut state_data = get_state!(self.app, wd);
             state_data.dt = dt;
@@ -147,7 +150,7 @@ impl WindowInstance {
         let mut state_data = get_state!(self.app, el);
         match tran {
             Trans::Push(mut x) => {
-                x.start(&mut state_data);
+                self.loop_info.loop_state |= x.start(&mut state_data);
                 self.states.push(x);
             }
             Trans::Pop => {
@@ -157,7 +160,7 @@ impl WindowInstance {
             Trans::Switch(x) => {
                 last.stop(&mut state_data);
                 *last = x;
-                last.start(&mut state_data);
+                self.loop_info.loop_state |= last.start(&mut state_data);
             }
             Trans::Exit => {
                 while let Some(mut last) = self.states.pop() {
@@ -181,7 +184,7 @@ impl WindowInstance {
             let render_now = std::time::Instant::now();
             let render_dur = render_now.duration_since(self.app.last_render_time);
             let dt = render_dur.as_secs_f32();
-
+            self.loop_info.loop_state.reset(dt);
             {
                 let mut encoder = gpu.device.create_command_encoder(&CommandEncoderDescriptor { label: Some("Clear Encoder") });
                 let _ = encoder.begin_render_pass(&RenderPassDescriptor {
@@ -372,6 +375,9 @@ pub struct WindowManager {
     proxy: EventLoopProxyType,
     world: World,
     windows: HashMap<WindowId, RefCell<Box<WindowInstance>>>,
+
+    all_events: usize,
+    draw_events: usize,
 }
 
 impl WindowManager {
@@ -382,6 +388,8 @@ impl WindowManager {
             proxy: el.create_proxy(),
             world: Default::default(),
             windows: Default::default(),
+            all_events: 0,
+            draw_events: 0,
         })
     }
 
@@ -400,6 +408,11 @@ impl WindowManager {
 impl ApplicationHandler<EventLoopMessage> for WindowManager {
     fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: StartCause) {
         profiling::finish_frame!();
+        self.all_events = 0;
+        if cause == StartCause::Poll {
+            self.all_events = 1;
+        }
+        self.draw_events = 0;
     }
 
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
@@ -476,7 +489,7 @@ impl ApplicationHandler<EventLoopMessage> for WindowManager {
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, window_id: WindowId, event: WindowEvent) {
         log::trace!(target: "winit_event", "{:?}", event);
-
+        self.all_events += 1;
         let control_flow = event_loop.control_flow();
 
         if event_loop.exiting() {
@@ -539,12 +552,11 @@ impl ApplicationHandler<EventLoopMessage> for WindowManager {
                 }
             }
             WindowEvent::RedrawRequested => {
+                self.draw_events += 1;
                 let mut not_running = vec![];
 
                 if let Some(this) = self.windows.get(&window_id) {
                     let mut this = this.borrow_mut();
-                    let mut f_ls = LoopState::WAIT_ALL;
-                    // update logical
 
                     'update: {
                         let mut this = &mut this;
@@ -552,24 +564,15 @@ impl ApplicationHandler<EventLoopMessage> for WindowManager {
                         if !this.loop_info.got_event && this.loop_info.loop_state.control_flow == ControlFlow::Wait {
                             break 'update;
                         }
-                        if !this.loop_info.pressed_keys.is_empty() || !this.loop_info.released_keys.is_empty() {
-                            log::trace!(target: "InputTrace", "process window {:?} pressed_key {:?} and released {:?}", window_id, this.loop_info.pressed_keys, this.loop_info.released_keys);
-                            this.app.inputs.process(&this.loop_info.pressed_keys, &this.loop_info.released_keys);
-                            this.loop_info.pressed_keys.clear();
-                            this.loop_info.released_keys.clear();
-                        }
                         if this.states.is_empty() {
                             this.running = false;
                         }
                         if this.running {
                             let mut wd = GlobalData { el: event_loop, elp: &self.proxy, windows: &self.windows, new_windows: &mut created_windows, world: &mut self.world };
-                            this.loop_once(&mut wd);
-                            let ls = this.loop_info.loop_state;
-                            if ls.render {
-                                this.render_once(&mut wd);
+                            this.render_once(&mut wd);
+                            if this.loop_info.loop_state.render > 0.0 || this.app.egui_ctx.has_requested_repaint() {
+                                this.app.window.request_redraw();
                             }
-                            this.loop_info.loop_state = ls;
-                            f_ls |= ls;
                         } else {
                             not_running.push(window_id);
                             if let Some(rid) = self.root {
@@ -578,12 +581,7 @@ impl ApplicationHandler<EventLoopMessage> for WindowManager {
                                 }
                             }
                         }
-                        this.loop_info.updated();
                     }
-                    event_loop.set_control_flow(f_ls.control_flow);
-
-                    // request for tick.
-                    this.app.window.request_redraw();
                 } else {
                     if self.root.map(|id| id == window_id).unwrap_or(false) {
                         event_loop.exit()
@@ -598,6 +596,72 @@ impl ApplicationHandler<EventLoopMessage> for WindowManager {
             _ => {}
         }
 
+        for x in created_windows {
+            self.windows.insert(x.id, RefCell::new(Box::new(x)));
+        }
+    }
+
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        if event_loop.exiting() {
+            return;
+        }
+        if self.all_events == self.draw_events {
+            // not update.
+            log::trace!(target:"winit_event", "Skip update due to only redraw event.");
+            return;
+        } else {
+            log::trace!(target:"winit_event", "Update event");
+        }
+        let mut created_windows = Vec::new();
+
+        let mut not_running = vec![];
+        let mut f_ls = LoopState::WAIT_ALL;
+
+        for (window_id, this) in &self.windows {
+            let window_id = *window_id;
+            let mut this = this.borrow_mut();
+            // update logical
+
+            'update: {
+                let mut this = &mut this;
+                let this = this.deref_mut();
+                if !this.loop_info.got_event && this.loop_info.loop_state.control_flow == ControlFlow::Wait {
+                    break 'update;
+                }
+                if !this.loop_info.pressed_keys.is_empty() || !this.loop_info.released_keys.is_empty() {
+                    log::trace!(target: "InputTrace", "process window {:?} pressed_key {:?} and released {:?}", window_id, this.loop_info.pressed_keys, this.loop_info.released_keys);
+                    this.app.inputs.process(&this.loop_info.pressed_keys, &this.loop_info.released_keys);
+                    this.loop_info.pressed_keys.clear();
+                    this.loop_info.released_keys.clear();
+                }
+                if this.states.is_empty() {
+                    this.running = false;
+                }
+                if this.running {
+                    let mut wd = GlobalData { el: event_loop, elp: &self.proxy, windows: &self.windows, new_windows: &mut created_windows, world: &mut self.world };
+                    this.loop_once(&mut wd);
+                    let ls = this.loop_info.loop_state;
+                    if ls.render > 0.0 {
+                        this.app.window.request_redraw();
+                    }
+                    this.loop_info.loop_state = ls;
+                    f_ls |= ls;
+                } else {
+                    not_running.push(window_id);
+                    if let Some(rid) = self.root {
+                        if window_id == rid {
+                            event_loop.exit();
+                        }
+                    }
+                }
+                this.loop_info.updated();
+            }
+        }
+        event_loop.set_control_flow(f_ls.control_flow);
+
+        for id in not_running {
+            self.windows.remove(&id);
+        }
         for x in created_windows {
             self.windows.insert(x.id, RefCell::new(Box::new(x)));
         }

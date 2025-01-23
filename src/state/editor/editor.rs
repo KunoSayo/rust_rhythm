@@ -1,13 +1,13 @@
 use crate::engine::global::{IO_POOL, STATIC_DATA};
-use crate::engine::{GameState, LoopState, StateData, Trans};
+use crate::engine::{get_edit_cache, GameState, LoopState, StateData, Trans};
 use crate::game::beatmap::file::SongBeatmapFile;
 use crate::game::beatmap::{SongBeatmapInfo, BEATMAP_EXT};
-use crate::game::secs_to_offset_type;
 use crate::game::song::{SongInfo, SongManagerResourceType};
+use crate::game::{secs_to_offset_type, OffsetType};
 use anyhow::anyhow;
 use egui::epaint::PathStroke;
 use egui::panel::TopBottomSide;
-use egui::{Align, Button, Color32, Context, Frame, Label, Layout, NumExt, Pos2, Rect, RichText, Sense, UiBuilder, Vec2};
+use egui::{Align, Button, Color32, Context, Frame, Label, Layout, NumExt, Pos2, Rect, RichText, Sense, TextEdit, TextStyle, UiBuilder, Vec2};
 use rodio::{Decoder, OutputStreamHandle, Sink, Source};
 use std::io::{Cursor, Read};
 use std::ops::{Add, ControlFlow, Deref};
@@ -126,8 +126,6 @@ impl BeatMapEditor {
 
 
 impl GameState for BeatMapEditor {
-    fn start(&mut self, s: &mut StateData) {}
-
     fn update(&mut self, s: &mut StateData) -> (Trans, LoopState) {
         self.check_sink();
         let mut tran = Trans::None;
@@ -398,6 +396,7 @@ impl BeatMapEditor {
         let height = 100.0;
         egui::TopBottomPanel::new(TopBottomSide::Bottom, "audio")
             .min_height(height)
+            .frame(Frame::none())
             .show(ctx, |ui| {
                 let width = ui.available_width();
 
@@ -408,16 +407,38 @@ impl BeatMapEditor {
                 let cur_progress = self.get_progress();
 
                 ui.allocate_ui(Vec2::new(200.0, height), |ui| {
-                    let progress_str = format_duration(&cur_progress);
-                    let text = RichText::new(progress_str)
-                        .size(35.0);
-                    let label = Label::new(text)
-                        .selectable(true);
-
                     ui.allocate_ui(Vec2::new(200.0, 75.0), |ui| {
                         ui.with_layout(Layout::top_down(Align::Center), |ui| {
-                            ui.add_sized(ui.available_size(), label);
-                        })
+                            let mut progress_str = format_duration(&cur_progress);
+                            const ID: &'static str = "PROGRESS";
+
+                            let mut cache = get_edit_cache();
+
+                            let the_str = if cache.is_editing(ID) {
+                                &mut cache.text
+                            } else {
+                                &mut progress_str
+                            };
+
+                            ui.add_space(ui.style().spacing.item_spacing.y);
+
+                            let text_edit = TextEdit::singleline(the_str)
+                                .font(TextStyle::Heading)
+                                .horizontal_align(Align::Center);
+
+                            let response = ui.add(text_edit);
+
+                            if response.has_focus() {
+                                cache.edit(&progress_str, ID);
+                            } else if response.lost_focus() {
+                                if let Some(dur) = get_duration_from_str(&cache.text) {
+                                    self.sink.try_seek(dur)
+                                        .expect("Failed to seek");
+                                }
+                                cache.release();
+                            }
+                            ui.add_space((75.0 - ui.min_rect().height()).at_least(0.0));
+                        });
                     });
                 });
 
@@ -468,6 +489,23 @@ impl BeatMapEditor {
                             self.sink.try_seek(dest_duration.mul_f32(1.0 / self.sink.speed()))
                                 .expect("Failed to seek");
                         }
+                    } else if response.contains_pointer() {
+                        ui.input(|input| {
+                            if input.raw_scroll_delta.y == 0.0 {
+                                return;
+                            }
+                            let (left, _, right) = self.beatmap.timing_group.get_near_beat(self.input_cache.select_timing_group, self.input_cache.current_duration.as_millis() as OffsetType);
+                            let dest_time = if input.raw_scroll_delta.y < 0.0 {
+                                // go right
+                                right.time
+                            } else {
+                                // go left
+                                left.time
+                            }.clamp(0, self.total_duration.as_millis() as OffsetType);
+
+                            self.sink.try_seek(Duration::from_millis(dest_time as u64).mul_f32(1.0 / self.sink.speed()))
+                                .expect("Failed to seek");
+                        });
                     }
                 });
 
@@ -540,3 +578,11 @@ pub fn format_ms(ms: i128) -> String {
     format!("{:02}:{:02}:{:03}", min, s % 60, ms % 1000)
 }
 
+pub fn get_duration_from_str(str: &str) -> Option<Duration> {
+    let mut it = str.rsplitn(3, ":");
+    let ms = it.next()?.parse::<u64>().ok()?;
+    let s = it.next().map(|x| x.parse::<u64>().ok()).unwrap_or(Some(0))?;
+    let m = it.next().map(|x| x.parse::<u64>().ok()).unwrap_or(Some(0))?;
+
+    Some(Duration::from_millis(ms.checked_add(s.checked_mul(1000)?.checked_add(m.checked_mul(1000 * 60)?)?)?))
+}

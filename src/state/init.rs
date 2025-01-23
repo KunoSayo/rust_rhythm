@@ -4,7 +4,6 @@ use std::sync::Arc;
 use futures::task::SpawnExt;
 use log::error;
 use once_cell::sync::Lazy;
-use wgpu::{Device, Queue};
 
 use crate::engine::global::{INITED, IO_POOL, STATIC_DATA};
 use crate::engine::{GameState, LoopState, StateData, StateEvent, Trans, WaitFutureState, WaitResult};
@@ -24,9 +23,6 @@ impl InitState {
 
 
 impl GameState for InitState {
-    fn start(&mut self, s: &mut StateData) {}
-
-
     fn update(&mut self, s: &mut StateData) -> (Trans, LoopState) {
         if let Some(gpu) = s.app.gpu.as_ref() {
             let state = self.start_state.take().unwrap();
@@ -60,9 +56,9 @@ impl GameState for InitState {
             }).expect("Spawn init task failed");
 
 
-            (Trans::Push(WaitFutureState::from_wait_thing(handle)), LoopState::POLL_WITHOUT_RENDER)
+            (Trans::Push(WaitFutureState::from_wait_thing(handle)), LoopState::POLL)
         } else {
-            (Trans::None, LoopState::WAIT_ALL)
+            (Trans::None, LoopState::WAIT)
         }
     }
 

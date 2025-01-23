@@ -59,12 +59,13 @@ impl WaitFutureState {
 }
 
 impl GameState for WaitFutureState {
-    fn start(&mut self, s: &mut StateData) {
+    fn start(&mut self, s: &mut StateData) -> LoopState {
         self.waker = Some(WindowWaker::new(s.wd.elp.clone(), &s.app.window).into());
         self.check_result();
         if self.result.is_some() {
             self.waker.take().unwrap().wake();
         }
+        LoopState::WAIT_ALL
     }
 
     fn update(&mut self, s: &mut StateData) -> (Trans, LoopState) {

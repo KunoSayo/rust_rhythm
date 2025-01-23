@@ -5,6 +5,7 @@ use std::cell::RefCell;
 use std::time::Duration;
 
 use egui::epaint::ahash::HashMap;
+use egui::NumExt;
 use specs::World;
 use winit::event::WindowEvent;
 use winit::event_loop::ControlFlow;
@@ -60,7 +61,7 @@ pub struct StateData<'a, 'b, 'c> {
 
 
 pub trait GameState: 'static {
-    fn start(&mut self, _: &mut StateData) {}
+    fn start(&mut self, _: &mut StateData) -> LoopState { LoopState::WAIT_ALL }
 
     /// Update when event cleared
     fn update(&mut self, _: &mut StateData) -> (Trans, LoopState) { (Trans::None, LoopState::WAIT) }
@@ -78,18 +79,17 @@ pub trait GameState: 'static {
     fn on_event(&mut self, _: &mut StateData, _: StateEvent) {}
 }
 
-#[derive(Eq, PartialEq, Copy, Clone, Debug)]
+#[derive(PartialEq, Copy, Clone, Debug)]
 pub struct LoopState {
     pub control_flow: ControlFlow,
-    pub render: bool,
+    pub render: f32,
 }
-
 
 impl Default for LoopState {
     fn default() -> Self {
         Self {
             control_flow: ControlFlow::Poll,
-            render: true,
+            render: 1.0,
         }
     }
 }
@@ -98,33 +98,39 @@ impl LoopState {
     #[allow(unused)]
     pub const WAIT_ALL: LoopState = LoopState {
         control_flow: ControlFlow::Wait,
-        render: false,
+        render: 0.0,
     };
 
     #[allow(unused)]
     pub const WAIT: LoopState = LoopState {
         control_flow: ControlFlow::Wait,
-        render: true,
+        render: 1.0,
     };
 
     #[allow(unused)]
     pub const POLL: LoopState = LoopState {
         control_flow: ControlFlow::Poll,
-        render: true,
+        render: 1.0,
     };
 
     #[allow(unused)]
     pub const POLL_WITHOUT_RENDER: LoopState = LoopState {
         control_flow: ControlFlow::Poll,
-        render: false,
+        render: 0.0,
     };
 
     #[allow(unused)]
-    pub fn wait_until(dur: Duration, render: bool) -> Self {
+    pub fn wait_until(dur: Duration, render: f32) -> Self {
         Self {
             control_flow: ControlFlow::WaitUntil(std::time::Instant::now() + dur),
             render,
         }
+    }
+
+    /// Reset the case and minus the render time
+    pub fn reset(&mut self, dt: f32) {
+        self.control_flow = ControlFlow::Wait;
+        self.render = (self.render - dt).at_least(0.0);
     }
 }
 
@@ -132,7 +138,7 @@ impl GameState for () {}
 
 impl std::ops::BitOrAssign for LoopState {
     fn bitor_assign(&mut self, rhs: Self) {
-        self.render |= rhs.render;
+        self.render = self.render.max(rhs.render);
         if self.control_flow != rhs.control_flow {
             match self.control_flow {
                 ControlFlow::Wait => self.control_flow = rhs.control_flow,

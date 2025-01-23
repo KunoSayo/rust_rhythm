@@ -15,7 +15,10 @@ impl MenuState {
 
 
 impl GameState for MenuState {
-    fn start(&mut self, s: &mut StateData) {}
+    fn start(&mut self, s: &mut StateData) -> LoopState {
+        // Render first!
+        LoopState::WAIT
+    }
 
     fn update(&mut self, s: &mut StateData) -> (Trans, LoopState) {
         (Trans::None, LoopState::WAIT)

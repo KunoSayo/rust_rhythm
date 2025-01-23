@@ -7,7 +7,7 @@ use crate::engine::{GameState, LoopState, StateData, Trans, WaitFutureState, Wai
 use crate::game::song::{SongManager, SongManagerResourceType};
 use crate::state::editor::editor::BeatMapEditor;
 use crate::ui::song_list::SongListUi;
-use egui::{Align, Context, Frame, Layout, Pos2, Rect, UiBuilder, UiKind, UiStackInfo, Widget};
+use egui::{Align, Context, Frame, Layout, Pos2, Rect, UiBuilder, UiKind, UiStackInfo};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -34,8 +34,9 @@ impl EditorMenu {
 
 
 impl GameState for EditorMenu {
-    fn start(&mut self, s: &mut StateData) {
+    fn start(&mut self, s: &mut StateData) -> LoopState {
         self.update_ui(s);
+        LoopState::WAIT
     }
 
     fn update(&mut self, s: &mut StateData) -> (Trans, LoopState) {

@@ -1,8 +1,8 @@
 #![allow(unused)]
 
+use single_thread_cell::SingleThreadRefCell;
 use std::collections::{HashMap, HashSet};
 use std::mem::swap;
-
 use winit::dpi::PhysicalPosition;
 use winit::event::{Touch, TouchPhase};
 use winit::keyboard::PhysicalKey;
@@ -83,5 +83,43 @@ impl RawInputData {
     #[allow(unused)]
     pub fn empty() -> Self {
         Self::default()
+    }
+}
+
+
+pub struct UiThreadTextEditCache {
+    editing: &'static str,
+    pub text: String,
+}
+
+impl Default for UiThreadTextEditCache {
+    fn default() -> Self {
+        Self {
+            editing: "",
+            text: "".to_string(),
+        }
+    }
+}
+
+static EDIT_CACHE: once_cell::sync::Lazy<SingleThreadRefCell<UiThreadTextEditCache>> = once_cell::sync::Lazy::new(|| Default::default());
+
+pub fn get_edit_cache() -> single_thread_cell::SingleThreadRefMut<'static, UiThreadTextEditCache> {
+    EDIT_CACHE.borrow_mut()
+}
+
+impl UiThreadTextEditCache {
+    pub fn edit(&mut self, str: &str, id: &'static str) {
+        if !self.is_editing(id) {
+            self.editing = id;
+            self.text = str.to_string();
+        }
+    }
+
+    pub fn release(&mut self) {
+        self.editing = "";
+    }
+
+    pub fn is_editing(&self, id: &'static str) -> bool {
+        std::ptr::addr_eq(self.editing, id)
     }
 }
