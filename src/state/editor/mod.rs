@@ -2,6 +2,7 @@ mod util;
 mod editor;
 mod timing_editor;
 mod settings_editor;
+mod note_editor;
 
 use crate::engine::{GameState, LoopState, StateData, Trans, WaitFutureState, WaitResult};
 use crate::game::song::{SongManager, SongManagerResourceType};

@@ -27,7 +27,7 @@ pub struct SongSampleInfo {
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum SubEditor {
     Settings,
-    Beatmap,
+    Note,
     Timing,
 }
 
@@ -172,7 +172,9 @@ impl GameState for BeatMapEditor {
             SubEditor::Settings => {
                 self.render_settings_editor(s, ctx);
             }
-            SubEditor::Beatmap => {}
+            SubEditor::Note => {
+                self.render_note_editor(s, ctx);
+            }
             SubEditor::Timing => {
                 self.render_timing_editor(s, ctx);
             }
@@ -233,7 +235,7 @@ impl BeatMapEditor {
     }
 
     fn render_top_panel(&mut self, s: &mut StateData, ctx: &Context) {
-        let height = 100.0;
+        let height = 36.0;
         egui::TopBottomPanel::new(TopBottomSide::Top, "editor_top_menu")
             .frame(Frame::none())
             .min_height(height)
@@ -248,9 +250,9 @@ impl BeatMapEditor {
                     if ui.add(button).clicked() {
                         self.current_editor = SubEditor::Timing;
                     }
-                    let button = Button::new("Beatmap").selected(self.current_editor == SubEditor::Beatmap).min_size(Vec2::new(0.0, button_height));
+                    let button = Button::new("Beatmap").selected(self.current_editor == SubEditor::Note).min_size(Vec2::new(0.0, button_height));
                     if ui.add(button).clicked() {
-                        self.current_editor = SubEditor::Beatmap;
+                        self.current_editor = SubEditor::Note;
                     }
 
                     let button = Button::new("Settings").selected(self.current_editor == SubEditor::Settings).min_size(Vec2::new(0.0, button_height));
@@ -393,7 +395,7 @@ impl BeatMapEditor {
     }
 
     fn render_bottom_progress(&mut self, s: &mut StateData, ctx: &Context) {
-        let height = 100.0;
+        let height = 50.0;
         egui::TopBottomPanel::new(TopBottomSide::Bottom, "audio")
             .min_height(height)
             .frame(Frame::none())
@@ -405,9 +407,10 @@ impl BeatMapEditor {
                 let progress_width = width - 200.0 - 100.0 * 4.0;
 
                 let cur_progress = self.get_progress();
+                let left_height = height - 25.0;
 
                 ui.allocate_ui(Vec2::new(200.0, height), |ui| {
-                    ui.allocate_ui(Vec2::new(200.0, 75.0), |ui| {
+                    ui.allocate_ui(Vec2::new(200.0, left_height), |ui| {
                         ui.with_layout(Layout::top_down(Align::Center), |ui| {
                             let mut progress_str = format_duration(&cur_progress);
                             const ID: &'static str = "PROGRESS";
@@ -437,7 +440,7 @@ impl BeatMapEditor {
                                 }
                                 cache.release();
                             }
-                            ui.add_space((75.0 - ui.min_rect().height()).at_least(0.0));
+                            ui.add_space((left_height - ui.min_rect().height()).at_least(0.0));
                         });
                     });
                 });
@@ -509,11 +512,12 @@ impl BeatMapEditor {
                     }
                 });
 
+                let button_height = height - 10.0;
 
                 ui.allocate_new_ui(UiBuilder::new()
                                        .max_rect(Rect {
-                                           min: (start_point.x + width - 400.0, start_point.y + 25.0).into(),
-                                           max: (start_point.x + width, start_point.y + 75.0).into(),
+                                           min: (start_point.x + width - 400.0, start_point.y + 5.0).into(),
+                                           max: (start_point.x + width, start_point.y + 5.0 + button_height).into(),
                                        }), |ui| {
                     ui.horizontal(|ui| {
                         let text = if self.sink.is_paused() {
@@ -522,9 +526,9 @@ impl BeatMapEditor {
                             "Pause"
                         };
                         let item_size = (400.0 - ui.style().spacing.item_spacing.x * 4.0) / 5.0;
-                        let cell_size = (item_size, 50.0);
+                        let cell_size = (item_size, button_height);
 
-                        let play_button = egui::Button::new(text)
+                        let play_button = Button::new(text)
                             .min_size(cell_size.into());
 
                         if ui.add_sized(cell_size, play_button).clicked() {
@@ -533,7 +537,7 @@ impl BeatMapEditor {
 
 
                         for speed in [0.25, 0.5, 0.75, 1.0] {
-                            if ui.add_sized(cell_size, egui::Button::new(speed.to_string()).min_size(cell_size.into())).clicked() {
+                            if ui.add_sized(cell_size, Button::new(speed.to_string()).min_size(cell_size.into())).clicked() {
                                 self.set_speed(speed);
                             }
                         }
