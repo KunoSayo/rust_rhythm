@@ -41,7 +41,7 @@ pub struct TextureRenderer {
     /// Bindings 0: texture view
     pub obj_layout: BindGroupLayout,
     pub light_uniform: Buffer,
-    pub bindgroup_zero: BindGroup,
+    pub bind_group_zero: BindGroup,
     pub normal_rp: RenderPipeline,
 
 }
@@ -136,7 +136,7 @@ impl TextureRenderer {
             base_bind_layout,
             obj_layout,
             light_uniform: frag_uniform,
-            bindgroup_zero: base_bind_group,
+            bind_group_zero: base_bind_group,
             normal_rp,
         }
     }

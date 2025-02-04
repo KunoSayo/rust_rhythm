@@ -18,7 +18,6 @@ pub mod renderer;
 pub mod renderer3d;
 pub mod uniform;
 pub mod camera;
-mod texture_renderer;
 
 static INSTANCE: Lazy<Instance> = Lazy::new(|| Instance::new(InstanceDescriptor::default()));
 

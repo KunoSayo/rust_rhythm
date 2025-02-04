@@ -1,3 +1,5 @@
+pub mod texture_renderer;
+
 use std::sync::Arc;
 use wgpu::util::{BufferInitDescriptor, DeviceExt, RenderEncoder};
 use wgpu::{Buffer, Device, Sampler, SamplerDescriptor};

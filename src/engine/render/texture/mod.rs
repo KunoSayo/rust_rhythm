@@ -1,3 +1,5 @@
+mod atlas;
+
 use image::GenericImageView;
 use wgpu::util::{DeviceExt, TextureDataOrder};
 use wgpu::{AddressMode, Device, FilterMode, Queue, Sampler, SamplerDescriptor, SurfaceConfiguration, Texture, TextureFormat, TextureView};
@@ -184,3 +186,4 @@ impl TextureWrapper {
         })
     }
 }
+

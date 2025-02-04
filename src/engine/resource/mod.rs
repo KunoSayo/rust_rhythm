@@ -29,6 +29,11 @@ pub mod manager;
 //     }
 // }
 
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub struct ResourceLocation {
+    pub id: String
+}
+
 #[allow(unused)]
 pub fn load_image_from_memory(image_data: &[u8]) -> Result<ColorImage, image::ImageError> {
     let image = image::load_from_memory(image_data)?;
