@@ -17,6 +17,8 @@ pub trait CommandEncoderExt {
 
     fn begin_multisample<'a>(&'a mut self, multi_sample_view: &'a TextureView, target: &'a TextureView, color_load: LoadOp<Color>,
                              depth: &'a TextureView, depth_load: LoadOp<f32>) -> RenderPass<'a>;
+
+    fn begin_normal<'a>(&'a mut self, color: &'a TextureView) -> RenderPass<'a>;
 }
 
 impl CommandEncoderExt for CommandEncoder {
@@ -34,6 +36,7 @@ impl CommandEncoderExt for CommandEncoder {
             occlusion_query_set: None,
         })
     }
+
     #[inline]
     fn begin_with_depth<'a>(&'a mut self, color: &'a TextureView, color_load: LoadOp<Color>,
                             depth: &'a TextureView, depth_load: LoadOp<f32>) -> RenderPass<'a> {
@@ -98,6 +101,22 @@ impl CommandEncoderExt for CommandEncoder {
                 depth_ops: Some(Operations { load: depth_load, store: StoreOp::Store }),
                 stencil_ops: None,
             }),
+            timestamp_writes: None,
+            occlusion_query_set: None,
+        })
+    }
+
+
+    #[inline]
+    fn begin_normal<'a>(&'a mut self, color: &'a TextureView) -> RenderPass<'a> {
+        self.begin_render_pass(&RenderPassDescriptor {
+            label: None,
+            color_attachments: &[Some(RenderPassColorAttachment {
+                view: color,
+                resolve_target: None,
+                ops: Operations { load: LoadOp::Load, store: StoreOp::Store },
+            })],
+            depth_stencil_attachment: None,
             timestamp_writes: None,
             occlusion_query_set: None,
         })

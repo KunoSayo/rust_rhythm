@@ -49,7 +49,7 @@ impl Debug for MainRendererData {
 
 impl MainRendererData {
     pub fn new(gpu: &WgpuData, _handles: &ResourceManager) -> Self {
-        let staging_belt = util::StagingBelt::new(2048);
+        let staging_belt = util::StagingBelt::new(32 * 1024);
         let egui_rpass = egui_wgpu::Renderer::new(&gpu.device, gpu.surface_cfg.format, None, 1, false);
         Self {
             staging_belt,

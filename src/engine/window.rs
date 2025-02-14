@@ -321,6 +321,7 @@ impl WindowInstance {
             swap_chain_frame.present();
 
             self.app.egui.handle_platform_output(&self.app.window, full_output.platform_output);
+            self.app.render.as_mut().unwrap().staging_belt.recall();
         } else {
             // no gpu but we need render it...
             // well...
