@@ -7,7 +7,7 @@ use crate::game::{secs_to_offset_type, OffsetType};
 use anyhow::anyhow;
 use egui::epaint::PathStroke;
 use egui::panel::TopBottomSide;
-use egui::{Align, Button, Color32, Context, Frame, Label, Layout, NumExt, Pos2, Rect, RichText, Sense, TextEdit, TextStyle, UiBuilder, Vec2};
+use egui::{Align, Button, Color32, Context, Frame, Layout, NumExt, Pos2, Rect, Sense, TextEdit, TextStyle, UiBuilder, Vec2};
 use rodio::{Decoder, OutputStreamHandle, Sink, Source};
 use std::io::{Cursor, Read};
 use std::ops::{Add, ControlFlow, Deref};

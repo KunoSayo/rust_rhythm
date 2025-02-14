@@ -29,9 +29,9 @@ pub mod manager;
 //     }
 // }
 
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Debug, Hash)]
 pub struct ResourceLocation {
-    pub id: String
+    pub id: String,
 }
 
 #[allow(unused)]
