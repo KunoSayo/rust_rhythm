@@ -57,7 +57,7 @@ impl ResourceManager {
     }
 
 
-    /// Get load asset task
+    /// Load the asset from packs. no cache
     pub fn load_asset(&self, path: &str) -> anyhow::Result<Vec<u8>> {
         for pack in &self.packs {
             if let Some(r) = pack.load_asset(path) {

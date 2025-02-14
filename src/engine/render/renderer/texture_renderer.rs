@@ -23,6 +23,17 @@ pub struct TextureObject {
     tex_coords: [Vector2<f32>; 6],
 }
 
+impl TextureObject {
+    pub fn new_rect(left_up: Vector2<f32>, right_bottom: Vector2<f32>, tex: &[Vector2<f32>; 4]) -> Self {
+        let right_up = Vector2::new(right_bottom.x, left_up.y);
+        let left_bottom = Vector2::new(left_up.x, right_bottom.y);
+        Self {
+            position: [left_up, right_up, left_bottom, left_bottom, right_up, right_bottom],
+            tex_coords: [tex[0], tex[1], tex[2], tex[2], tex[1], tex[3]],
+        }
+    }
+}
+
 
 #[repr(C)]
 #[derive(Pod, Zeroable, Default, Copy, Clone)]
@@ -176,6 +187,5 @@ impl TextureRenderer {
 
             rp.draw_indexed(0..(x.len() * 6) as u32, 0, 0..1);
         }
-        
     }
 }

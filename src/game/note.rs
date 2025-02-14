@@ -11,6 +11,7 @@ pub enum NoteHitType {
 #[derive(Serialize, Deserialize, PartialOrd, PartialEq, Clone, Copy, Debug)]
 pub struct NormalNote {
     pub x: f32,
+    pub width: f32,
     pub time: OffsetType,
     pub note_type: NoteHitType,
 
@@ -19,6 +20,7 @@ pub struct NormalNote {
 #[derive(Serialize, Deserialize, PartialOrd, PartialEq, Clone, Copy, Debug)]
 pub struct LongNote {
     pub x: f32,
+    pub width: f32,
     pub start_time: OffsetType,
     pub end_time: OffsetType,
     pub note_type: NoteHitType,
@@ -28,6 +30,8 @@ pub struct LongNote {
 pub trait Note {
     fn get_x(&self) -> f32;
 
+    fn get_width(&self) -> f32;
+    
     // Get the start time
     fn get_time(&self) -> OffsetType;
 
@@ -37,6 +41,10 @@ pub trait Note {
 impl Note for NormalNote {
     fn get_x(&self) -> f32 {
         self.x
+    }
+
+    fn get_width(&self) -> f32 {
+        self.width
     }
 
     fn get_time(&self) -> OffsetType {
@@ -51,6 +59,10 @@ impl Note for NormalNote {
 impl Note for LongNote {
     fn get_x(&self) -> f32 {
         self.x
+    }
+
+    fn get_width(&self) -> f32 {
+        self.width
     }
 
     fn get_time(&self) -> OffsetType {

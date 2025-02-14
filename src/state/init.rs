@@ -4,9 +4,9 @@ use std::sync::Arc;
 use futures::task::SpawnExt;
 use log::error;
 use once_cell::sync::Lazy;
-
+use wgpu::{Device, Queue};
 use crate::engine::global::{INITED, IO_POOL, STATIC_DATA};
-use crate::engine::{GameState, LoopState, StateData, StateEvent, Trans, WaitFutureState, WaitResult};
+use crate::engine::{GameState, LoopState, ResourceManager, StateData, StateEvent, Trans, WaitFutureState, WaitResult};
 use crate::game::song::SongManager;
 
 pub struct InitState {
@@ -18,6 +18,10 @@ impl InitState {
         Self {
             start_state: Some(state),
         }
+    }
+    
+    #[allow(unused)]
+    pub async fn init_tasks(device: Arc<Device>, queue: Arc<Queue>, res: Arc<ResourceManager>) {
     }
 }
 
@@ -38,6 +42,7 @@ impl GameState for InitState {
                         Lazy::force(&STATIC_DATA);
                     }
 
+                    Self::init_tasks(device, queue, res).await;
 
                     anyhow::Ok(())
                 };
