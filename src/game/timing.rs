@@ -96,7 +96,8 @@ impl Timing {
         //                    = 60 * 1000 * 100 / bpm
         // delta / interval (number)   = delta * bpm / 60 / 1000 / 100
 
-        let number = (delta as i64 * self.bpm.0 as i64 / 60 / 1000 / 100) as i32;
+        let number = (delta as i64 * self.bpm.0 as i64 / 6000000) as i32 - if delta < 0 { 1 } else { 0 };
+
         let is_measure = (number % self.time_signature.get() as i32) == 0;
         let beat_time = self.get_beat_time(number);
         Beat {
@@ -107,8 +108,8 @@ impl Timing {
     }
 
     pub fn get_beat_time(&self, number: i32) -> OffsetType {
-        self.offset + (number as i64).checked_mul(60 * 1000 * 100)
-            .expect("Get beat time overflow!") / self.bpm.0 as i64
+        self.offset + (self.bpm.0 as i64 - 1 + (number as i64).checked_mul(60 * 1000 * 100)
+            .expect("Get beat time overflow!")) / self.bpm.0 as i64
     }
 
     pub fn get_next_beat_by_beat(&self, cur_beat: &Beat) -> Beat {

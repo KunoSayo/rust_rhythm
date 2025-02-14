@@ -3,14 +3,16 @@ use crate::engine::{get_edit_cache, GameState, LoopState, StateData, Trans};
 use crate::game::beatmap::file::SongBeatmapFile;
 use crate::game::beatmap::{SongBeatmapInfo, BEATMAP_EXT};
 use crate::game::song::{SongInfo, SongManagerResourceType};
+use crate::game::timing::TimingGroupBeatIterator;
 use crate::game::{secs_to_offset_type, OffsetType};
+use crate::state::editor::note_editor::BeatmapEditorData;
 use anyhow::anyhow;
 use egui::epaint::PathStroke;
 use egui::panel::TopBottomSide;
 use egui::{Align, Button, Color32, Context, Frame, Layout, NumExt, Pos2, Rect, Sense, TextEdit, TextStyle, UiBuilder, Vec2};
 use rodio::{Decoder, OutputStreamHandle, Sink, Source};
 use std::io::{Cursor, Read};
-use std::ops::{Add, ControlFlow, Deref};
+use std::ops::{Add, ControlFlow, Deref, Mul};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicI16, Ordering};
 use std::sync::Arc;
@@ -36,7 +38,7 @@ pub struct BeatMapEditor {
     pub song_info: Arc<SongInfo>,
     pub beatmap: SongBeatmapFile,
     save_path: Option<PathBuf>,
-    total_duration: Duration,
+    pub total_duration: Duration,
     sink: Sink,
     pub(in crate::state::editor) input_cache: InputCache,
 
@@ -52,6 +54,8 @@ pub(in crate::state::editor) struct InputCache {
     pub(in crate::state::editor) progress_half_time: f32,
     pub(in crate::state::editor) select_timing_group: usize,
     pub(in crate::state::editor) select_timing_row: Option<usize>,
+    pub(in crate::state::editor) edit_data: BeatmapEditorData,
+
 }
 
 impl Default for InputCache {
@@ -62,6 +66,7 @@ impl Default for InputCache {
             progress_half_time: 1.0,
             select_timing_group: 0,
             select_timing_row: None,
+            edit_data: Default::default(),
         }
     }
 }
@@ -220,7 +225,11 @@ impl GameState for BeatMapEditor {
 impl BeatMapEditor {
     fn get_progress(&self) -> Duration {
         let dur = self.sink.get_pos();
-        dur.mul_f32(self.sink.speed()).min(self.total_duration)
+        dur.mul((1.0 / self.sink.speed()) as u32).min(self.total_duration)
+    }
+
+    pub(crate) fn get_beat_iter(&self, secs: f32) -> TimingGroupBeatIterator {
+        self.beatmap.timing_group.get_beat_iterator(self.input_cache.select_timing_group, (secs * 1000.0) as OffsetType)
     }
 
     fn set_speed(&self, speed: f32) {
@@ -506,7 +515,7 @@ impl BeatMapEditor {
                                 left.time
                             }.clamp(0, self.total_duration.as_millis() as OffsetType);
 
-                            self.sink.try_seek(Duration::from_millis(dest_time as u64).mul_f32(1.0 / self.sink.speed()))
+                            self.sink.try_seek(Duration::from_millis(dest_time as u64).mul((1.0 / self.sink.speed()) as u32))
                                 .expect("Failed to seek");
                         });
                     }

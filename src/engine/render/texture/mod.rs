@@ -1,4 +1,4 @@
-mod atlas;
+pub mod atlas;
 
 use image::GenericImageView;
 use wgpu::util::{DeviceExt, TextureDataOrder};

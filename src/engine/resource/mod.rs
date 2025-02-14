@@ -1,7 +1,7 @@
 use std::ops::Deref;
 
 use egui::ColorImage;
-
+use image::DynamicImage;
 pub use manager::*;
 pub use progress::*;
 
@@ -32,6 +32,14 @@ pub mod manager;
 #[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Debug, Hash)]
 pub struct ResourceLocation {
     pub id: String,
+}
+
+impl ResourceLocation {
+    pub fn from_name(p0: &str) -> Self {
+        Self {
+            id: p0.to_string(),
+        }
+    }
 }
 
 #[allow(unused)]

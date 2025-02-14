@@ -1,11 +1,12 @@
 use std::path::PathBuf;
-
+use std::sync::Arc;
 use anyhow::anyhow;
 use dashmap::DashMap;
 use log::info;
 use wgpu::{Device, Queue};
 
-use crate::engine::TextureWrapper;
+use crate::engine::{ResourceLocation, TextureWrapper};
+use crate::engine::atlas::TextureAtlas;
 
 #[derive(Debug)]
 pub struct ResourcePack {
@@ -15,7 +16,7 @@ pub struct ResourcePack {
 impl ResourcePack {
     fn builtin() -> anyhow::Result<Self> {
         let app_root = std::env::current_dir()?;
-        let res_root = if app_root.join("res").exists() { app_root.join("res") } else { app_root };
+        let res_root = if app_root.join("../res").exists() { app_root.join("../res") } else { app_root };
         info!("Builtin resource pack path is {:?}", res_root);
         Ok(Self {
             root_dir: res_root,
@@ -42,6 +43,7 @@ pub struct ResourceManager {
     packs: Vec<ResourcePack>,
     // pub fonts: DashMap<String, FontArc>,
     pub textures: DashMap<String, TextureWrapper>,
+    pub atlas: DashMap<ResourceLocation, Arc<TextureAtlas>>,
 }
 
 #[allow(unused)]
@@ -53,6 +55,7 @@ impl ResourceManager {
             packs: vec![],
             // fonts: Default::default(),
             textures: Default::default(),
+            atlas: Default::default(),
         })
     }
 

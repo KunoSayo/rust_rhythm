@@ -1,13 +1,14 @@
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+use crate::engine::atlas::TextureAtlas;
+use crate::engine::global::{INITED, IO_POOL, STATIC_DATA};
+use crate::engine::{GameState, LoopState, ResourceLocation, ResourceManager, StateData, StateEvent, Trans, WaitFutureState, WaitResult};
+use crate::game::song::SongManager;
 use futures::task::SpawnExt;
 use log::error;
 use once_cell::sync::Lazy;
 use wgpu::{Device, Queue};
-use crate::engine::global::{INITED, IO_POOL, STATIC_DATA};
-use crate::engine::{GameState, LoopState, ResourceManager, StateData, StateEvent, Trans, WaitFutureState, WaitResult};
-use crate::game::song::SongManager;
 
 pub struct InitState {
     start_state: Option<Box<dyn GameState + Send + 'static>>,
@@ -19,9 +20,13 @@ impl InitState {
             start_state: Some(state),
         }
     }
-    
+
     #[allow(unused)]
     pub async fn init_tasks(device: Arc<Device>, queue: Arc<Queue>, res: Arc<ResourceManager>) {
+        let note = image::load_from_memory(&res.load_asset("texture/note.png").unwrap()).unwrap();
+
+        let atlas = TextureAtlas::make_atlas(&device, &queue, &[(ResourceLocation::from_name("note"), &note)]).unwrap();
+        res.atlas.insert(ResourceLocation::from_name("default"), atlas.into());
     }
 }
 

@@ -6,13 +6,14 @@ use rectangle_pack::{contains_smallest_box, pack_rects, volume_heuristic, Groupe
 use std::collections::BTreeMap;
 use wgpu::Queue;
 
+#[derive(Debug)]
 pub struct TextureAtlas {
     texture: TextureWrapper,
     locs: HashMap<ResourceLocation, (u32, u32)>,
 }
 
 impl TextureAtlas {
-    pub fn make_atlas(device: &wgpu::Device, queue: &Queue, data: &[(ResourceLocation, image::RgbaImage)]) -> anyhow::Result<Self> {
+    pub fn make_atlas(device: &wgpu::Device, queue: &Queue, data: &[(ResourceLocation, &DynamicImage)]) -> anyhow::Result<Self> {
         let mut rects_to_pack = GroupedRectsToPlace::<_, ()>::new();
         for x in data {
             rects_to_pack.push_rect(&x.0, None, RectToInsert::new(x.1.width(), x.1.height(), 1));
@@ -35,7 +36,7 @@ impl TextureAtlas {
 
         for x in data {
             let loc = locs.get(&x.0).unwrap();
-            img.copy_from(&x.1, loc.0, loc.1);
+            img.copy_from(x.1, loc.0, loc.1);
         }
 
         let texture = TextureWrapper::from_image(device, queue, &img, Some("Texture Atlas"))?;
