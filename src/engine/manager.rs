@@ -703,11 +703,12 @@ pub struct AsyncWindowManager {
 
 impl AsyncWindowManager {
     pub(crate) fn new(el: &EventLoop<EventLoopMessage>) -> anyhow::Result<Self> {
-        let wm = WindowManager::new(el)?;
-        let ael = EventLoopBuilder::default().build().unwrap();
-        Ok(Self {
-            sender: wm,
-        })
+        // let wm = WindowManager::new(el)?;
+        // let ael = EventLoopBuilder::default().build().unwrap();
+        // Ok(Self {
+        //     sender: wm,
+        // })
+        unimplemented!()
     }
 }
 

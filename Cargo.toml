@@ -38,7 +38,7 @@ cpal = "0.15.3"
 
 # functions
 toml_edit = "0.22.13"
-specs = { version = "0.20.0" , default-features = false}
+specs = { version = "0.20.0" , default-features = false, git = "https://github.com/amethyst/specs.git"}
 
 # log
 log = "0.4.22"
