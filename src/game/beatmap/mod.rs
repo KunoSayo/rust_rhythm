@@ -7,9 +7,10 @@ use crate::game::beatmap::file::SongBeatmapFile;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub enum MapRule {
-    Falling
+    Falling,
+    FourKey,
 }
 
 pub const BEATMAP_EXT: &'static str = "rr";

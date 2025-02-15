@@ -30,6 +30,13 @@ pub struct RawInputData {
     pub pressing: HashSet<PhysicalKey>,
 }
 
+#[derive(Default, Copy, Clone)]
+pub struct MouseState {
+    pub pos: PhysicalPosition<f64>,
+    pub left_click: bool,
+    pub last_left_click: bool,
+}
+
 #[derive(Default)]
 pub struct BakedInputs {
     pub cur_temp_input: RawInputData,
@@ -41,6 +48,7 @@ pub struct BakedInputs {
     pub last_temp_game_input: RawInputData,
     pub points: HashMap<u64, Pointer>,
     pub pressed_any_cur_frame: usize,
+    pub mouse_state: MouseState,
 }
 
 
@@ -73,6 +81,7 @@ impl BakedInputs {
             .count();
     }
 
+    /// Get press state between frames.
     pub fn is_pressed(&self, keys: &[PhysicalKey]) -> bool {
         keys.iter().any(|k| !self.last_frame_input.pressing.contains(k))
             && keys.iter().all(|k| self.cur_frame_input.pressing.contains(k))

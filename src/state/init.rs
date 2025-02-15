@@ -3,12 +3,13 @@ use std::sync::Arc;
 
 use crate::engine::atlas::TextureAtlas;
 use crate::engine::global::{INITED, IO_POOL, STATIC_DATA};
+use crate::engine::renderer::texture_renderer::TextureRenderer;
 use crate::engine::{GameState, LoopState, ResourceLocation, ResourceManager, StateData, StateEvent, Trans, WaitFutureState, WaitResult};
 use crate::game::song::SongManager;
 use futures::task::SpawnExt;
 use log::error;
 use once_cell::sync::Lazy;
-use wgpu::{Device, Queue};
+use wgpu::{Device, Queue, ShaderModule};
 
 pub struct InitState {
     start_state: Option<Box<dyn GameState + Send + 'static>>,
@@ -38,6 +39,7 @@ impl GameState for InitState {
             let device = gpu.device.clone();
             let queue = gpu.queue.clone();
             let res = s.app.res.clone();
+            s.app.world.insert(TextureRenderer::new(gpu));
             let handle = IO_POOL.spawn_with_handle(async move {
                 let device = device;
                 let queue = queue;

@@ -69,7 +69,7 @@ pub struct TextureRenderer {
 
 
 impl TextureRenderer {
-    pub fn new(gpu: &WgpuData, shader: &ShaderModule) -> Self {
+    pub fn new(gpu: &WgpuData) -> Self {
         let device = &gpu.device;
         let base_bind_layout = device.create_bind_group_layout(&BindGroupLayoutDescriptor {
             label: Some("Renderer base bind group"),
@@ -126,6 +126,9 @@ impl TextureRenderer {
             blend: Some(BlendState::REPLACE),
             write_mask: ColorWrites::ALL,
         })];
+
+        let shader_desc = include_wgsl!("texture_renderer.wgsl");
+        let shader = device.create_shader_module(shader_desc);
         let rpd = RenderPipelineDescriptor {
             label: None,
             layout: Some(&rp_layout),

@@ -45,6 +45,7 @@ pub struct BeatMapEditor {
     sample_info: SongSampleInfo,
 
     current_editor: SubEditor,
+    pub dirty: bool
 }
 
 
@@ -115,6 +116,7 @@ impl BeatMapEditor {
             }
         };
 
+        let dirty = info.is_none();
         let current_editor = SubEditor::Timing;
         Ok(Self {
             beatmap: info.map(|x| x.song_beatmap_file).unwrap_or(SongBeatmapFile::new(song_info.title.clone())),
@@ -125,6 +127,7 @@ impl BeatMapEditor {
             input_cache: Default::default(),
             sample_info,
             current_editor,
+            dirty,
         })
     }
 }

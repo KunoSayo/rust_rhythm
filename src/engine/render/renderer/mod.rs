@@ -22,7 +22,7 @@ impl StaticRendererData {
     pub fn new(device: &Device) -> Self {
         let nearest_sampler = device.create_sampler(&SamplerDescriptor {
             mag_filter: FilterMode::Nearest,
-            min_filter: FilterMode::Linear,
+            min_filter: FilterMode::Nearest,
             address_mode_u: AddressMode::Repeat,
             address_mode_v: AddressMode::Repeat,
             lod_max_clamp: 0.0,

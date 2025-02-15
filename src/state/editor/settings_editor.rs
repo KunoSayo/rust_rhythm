@@ -1,7 +1,7 @@
 use crate::engine::StateData;
+use crate::game::beatmap::MapRule;
 use crate::state::editor::editor::BeatMapEditor;
 use egui::{Color32, Frame, Widget};
-
 
 impl BeatMapEditor {
     pub fn render_settings_editor(&mut self, s: &mut StateData, ctx: &egui::Context) {
@@ -42,6 +42,9 @@ impl BeatMapEditor {
                         ui.add(none_select_label("Tags: "));
                         edit(&mut self.beatmap.metadata.tags).ui(ui);
                     });
+
+                    self.dirty |= ui.radio_value(&mut self.beatmap.rule, MapRule::Falling, "Falling").changed();
+                    self.dirty |= ui.radio_value(&mut self.beatmap.rule, MapRule::FourKey, "4K").changed();
                 })
             });
     }

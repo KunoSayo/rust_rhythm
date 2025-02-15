@@ -4,15 +4,22 @@ use egui::epaint::PathStroke;
 use egui::panel::Side;
 use egui::{Color32, Frame, Pos2, Rect, Vec2};
 
+
+#[derive(Default)]
+enum PointerType {
+    #[default]
+    Select
+}
+
 pub struct BeatmapEditorData {
     /// The view seconds. At y = 1
-    view_secs: f32,
+    pointer_type: PointerType,
 }
 
 impl Default for BeatmapEditorData {
     fn default() -> Self {
         Self {
-            view_secs: 1.0,
+            pointer_type: Default::default(),
         }
     }
 }
@@ -25,7 +32,9 @@ impl BeatMapEditor {
             .frame(Frame::none())
             .max_width(200.0)
             .resizable(false)
-            .show(ctx, |ui| {});
+            .show(ctx, |ui| {
+                ui.vertical(|ui| {});
+            });
 
         let current_time = self.input_cache.current_duration.as_secs_f32();
         egui::CentralPanel::default()
@@ -53,14 +62,13 @@ impl BeatMapEditor {
 
 
                 let time_map_y = |time: f32| {
-                    (time - current_time) / self.input_cache.edit_data.view_secs
+                    (time - current_time) / self.input_cache.progress_half_time
                 };
 
                 let time_map_ui_y = |time: f32| {
                     rect.center().y - time_map_y(time) * rect.height() * 0.5
                 };
 
-                ui.set_clip_rect(rect);
 
                 let points = vec![Pos2::new(rect.left(), rect.top()),
                                   Pos2::new(rect.right(), rect.top()),
@@ -68,10 +76,12 @@ impl BeatMapEditor {
                                   Pos2::new(rect.left(), rect.bottom()),
                                   Pos2::new(rect.left(), rect.top())];
                 ui.painter().line(points, PathStroke::new(1.0, Color32::WHITE));
+                
+                ui.set_clip_rect(rect);
 
                 // Render timing group && current time line
-                for x in self.get_beat_iter(self.input_cache.current_duration.as_secs_f32() - self.input_cache.edit_data.view_secs - 1.0) {
-                    if x.time as f32 / 1000.0 > self.input_cache.current_duration.as_secs_f32() + self.input_cache.edit_data.view_secs + 1.0 {
+                for x in self.get_beat_iter(self.input_cache.current_duration.as_secs_f32() - self.input_cache.progress_half_time - 1.0) {
+                    if x.time as f32 / 1000.0 > self.input_cache.current_duration.as_secs_f32() + self.input_cache.progress_half_time + 1.0 {
                         break;
                     }
                     if x.time > self.total_duration.as_millis() as i64 {

@@ -1,31 +1,32 @@
-use std::cell::RefCell;
-use std::collections::HashSet;
-use std::default::Default;
-use std::ops::DerefMut;
-use std::sync::atomic::AtomicBool;
-use std::sync::mpsc::{Receiver, Sender};
 use egui::epaint::ahash::{HashMap, HashMapExt};
 use egui::Context;
 use egui_wgpu::ScreenDescriptor;
 use futures::executor::ThreadPool;
 use log::info;
 use specs::World;
+use std::cell::RefCell;
+use std::collections::HashSet;
+use std::default::Default;
+use std::ops::DerefMut;
+use std::sync::atomic::AtomicBool;
+use std::sync::mpsc::{Receiver, Sender};
 use wgpu::{Color, CommandEncoderDescriptor, Extent3d, ImageCopyTexture, LoadOp, Operations, Origin3d, RenderPassColorAttachment, RenderPassDescriptor, StoreOp, TextureAspect};
 use winit::application::ApplicationHandler;
 use winit::dpi::{PhysicalSize, Size};
-use winit::event::{ElementState, Event, StartCause, WindowEvent};
+use winit::event::{ElementState, Event, MouseButton, StartCause, TouchPhase, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, DeviceEvents, EventLoop, EventLoopBuilder, EventLoopProxy};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowAttributes, WindowId};
 
 use crate::engine::app::AppInstance;
 use crate::engine::global::IO_POOL;
-use crate::engine::{GameState, GlobalData, LoopState, MainRendererData, Pointer, StateEvent, Trans, WgpuData};
+use crate::engine::{GameState, GlobalData, LoopState, MainRendererData, MouseState, Pointer, StateEvent, Trans, WgpuData};
 
 #[derive(Default)]
 struct LoopInfo {
     pressed_keys: HashSet<PhysicalKey>,
     released_keys: HashSet<PhysicalKey>,
+    mouse_input: MouseState,
     loop_state: LoopState,
     got_event: bool,
 }
@@ -122,12 +123,13 @@ impl WindowInstance {
         profiling::scope!("Loop logic once");
         let now = std::time::Instant::now();
         let dt = now.duration_since(self.app.last_update_time).as_secs_f32();
-        
-        
-        self.loop_info.loop_state.reset(0.0);
 
+
+        self.loop_info.loop_state.reset(0.0);
+        self.app.inputs.mouse_state = self.loop_info.mouse_input;
+        self.loop_info.mouse_input.last_left_click = self.loop_info.mouse_input.left_click;
         self.app.inputs.swap_frame();
-        
+
         {
             let mut state_data = get_state!(self.app, wd);
             state_data.dt = dt;
@@ -346,7 +348,48 @@ impl WindowInstance {
         }
         match we {
             WindowEvent::Touch(touch) => {
+                self.loop_info.mouse_input.pos = touch.location;
+                match touch.phase {
+                    TouchPhase::Started => {
+                        self.loop_info.mouse_input.left_click = true;
+                        self.loop_info.mouse_input.last_left_click = false;
+                    }
+                    TouchPhase::Moved => {
+                        self.loop_info.mouse_input.left_click = true;
+                        self.loop_info.mouse_input.last_left_click = true;
+                    }
+                    TouchPhase::Ended | TouchPhase::Cancelled => {
+                        self.loop_info.mouse_input.left_click = false;
+                        self.loop_info.mouse_input.last_left_click = true;
+                    }
+                }
                 self.app.inputs.points.insert(touch.id, Pointer::from(*touch));
+            }
+            WindowEvent::CursorMoved {
+                device_id, position
+            } => {
+                self.loop_info.mouse_input.pos = *position;
+            }
+            WindowEvent::CursorLeft {
+                ..
+            } => {
+                self.loop_info.mouse_input.pos = (-9961.0, -9961.0).into();
+            }
+            WindowEvent::MouseInput {
+                device_id, state, button
+            } => {
+                if *button == MouseButton::Left {
+                    match *state {
+                        ElementState::Pressed => {
+                            self.loop_info.mouse_input.left_click = true;
+                            self.loop_info.mouse_input.last_left_click = false;
+                        }
+                        ElementState::Released => {
+                            self.loop_info.mouse_input.left_click = false;
+                            self.loop_info.mouse_input.last_left_click = true;
+                        }
+                    }
+                }
             }
             WindowEvent::KeyboardInput {
                 event,
@@ -684,7 +727,7 @@ impl AsyncWindowManagerInner {
     fn run_loop(mut self) {
         loop {
             self.window_manager.new_events(&self.event_loop, StartCause::Poll);
-            
+
             while let Ok(msg) = self.recv.try_recv() {
                 match msg {
                     AsyncMsg::WindowEvent((id, e)) => {
@@ -698,7 +741,7 @@ impl AsyncWindowManagerInner {
 }
 
 pub struct AsyncWindowManager {
-    sender: Sender<AsyncMsg>
+    sender: Sender<AsyncMsg>,
 }
 
 impl AsyncWindowManager {

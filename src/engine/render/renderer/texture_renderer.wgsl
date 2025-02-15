@@ -16,7 +16,7 @@ struct VertexOut {
 }
 
 @vertex
-fn vs(input: VertexIn) -> PlaneVertexOut {
+fn vs(input: VertexIn) -> VertexOut {
     var out: VertexOut;
 
     out.tex_coords = input.tex_coords;
