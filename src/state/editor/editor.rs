@@ -286,6 +286,9 @@ impl BeatMapEditor {
                 let ui_height = ui.available_height();
                 let right_width = 250.0;
                 let progress_width = (width - right_width).ceil();
+                if progress_width <= 1.0 {
+                    return;
+                }
                 let start_point = ui.next_widget_position().add((0.0, 12.5).into());
                 let background_rect = Rect {
                     min: start_point,
