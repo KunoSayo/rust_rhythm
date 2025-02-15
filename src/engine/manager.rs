@@ -584,7 +584,7 @@ impl ApplicationHandler<EventLoopMessage> for WindowManager {
                     } else if size.width > 1 && size.height > 1 {
                         let this = this.get_mut();
                         if let Some(gpu) = &mut this.app.gpu {
-                            info!("Window resized, telling gpu data");
+                            info!("Window resized ({}x{}), telling gpu data", size.width, size.height);
                             gpu.resize(size.width, size.height);
                             match &mut this.app.render {
                                 Some(_) => {}

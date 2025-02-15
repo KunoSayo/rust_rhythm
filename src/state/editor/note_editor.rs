@@ -76,7 +76,7 @@ impl BeatMapEditor {
                                   Pos2::new(rect.left(), rect.bottom()),
                                   Pos2::new(rect.left(), rect.top())];
                 ui.painter().line(points, PathStroke::new(1.0, Color32::WHITE));
-                
+
                 ui.set_clip_rect(rect);
 
                 // Render timing group && current time line
