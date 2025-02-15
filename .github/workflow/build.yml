@@ -36,12 +36,7 @@ jobs:
       - name: Build
         run: cargo build --release --bin rust_rhythm_windows --package rust_rhythm_windows --verbose -Z unstable-options --out-dir artifacts --no-default-features
       - name: Upload artifacts
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v4
         with:
           path: ${{ github.workspace }}/artifacts
-          name: ${{ matrix.os }}-${{ github.run_number }}
-      - name: Upload res
-        uses: actions/upload-artifact@v2
-        with:
-          path: ${{ github.workspace }}/res
           name: ${{ matrix.os }}-${{ github.run_number }}
