@@ -507,7 +507,7 @@ impl ApplicationHandler<EventLoopMessage> for WindowManager {
 
                 // this.app.egui_ctx = Context::default();
                 let size = this.app.window.inner_size();
-                this.app.egui_ctx.set_pixels_per_point(this.app.window.scale_factor() as f32);
+                // this.app.egui_ctx.set_pixels_per_point(this.app.window.scale_factor() as f32);
                 let WindowInstance {
                     ref mut app,
                     ..

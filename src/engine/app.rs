@@ -43,8 +43,8 @@ impl AppInstance {
         }
         egui_ctx.set_style(style);
         if gpu.is_some() {
-            egui_ctx.set_pixels_per_point(window.scale_factor() as f32);
-            info!("Set the egui context scale factor");
+            // egui_ctx.set_pixels_per_point(window.scale_factor() as f32);
+            // info!("Set the egui context scale factor to {}", window.scale_factor());
         }
 
         let egui = State::new(egui_ctx.clone(), ViewportId::ROOT, &window, egui_ctx.native_pixels_per_point(), None, None);
