@@ -13,7 +13,7 @@ pub mod state;
 pub mod input;
 pub mod app;
 pub mod audio;
-pub mod window;
+pub mod manager;
 pub mod global;
 pub mod config;
 pub mod task;

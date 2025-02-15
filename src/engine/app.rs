@@ -6,7 +6,7 @@ use log::{info, warn};
 use specs::{World, WorldExt};
 use winit::window::Window;
 
-use crate::engine::window::EventLoopTargetType;
+use crate::engine::manager::EventLoopTargetType;
 use crate::engine::{AudioData, BakedInputs, MainRendererData, ResourceManager, WgpuData};
 
 pub struct AppInstance {

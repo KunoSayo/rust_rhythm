@@ -3,7 +3,7 @@ use std::task::Wake;
 
 use winit::window::{Window, WindowId};
 
-use crate::engine::window::{EventLoopMessage, EventLoopProxyType};
+use crate::engine::manager::{EventLoopMessage, EventLoopProxyType};
 
 pub struct WindowWaker {
     proxy: Mutex<EventLoopProxyType>,

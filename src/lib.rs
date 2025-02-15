@@ -1,5 +1,5 @@
 use crate::engine::global::STATIC_DATA;
-use crate::engine::window::{EventLoopMessage, WindowManager};
+use crate::engine::manager::{EventLoopMessage, WindowManager};
 use crate::state::{InitState, MenuState};
 use winit::event_loop::EventLoop;
 

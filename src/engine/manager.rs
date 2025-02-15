@@ -2,7 +2,8 @@ use std::cell::RefCell;
 use std::collections::HashSet;
 use std::default::Default;
 use std::ops::DerefMut;
-
+use std::sync::atomic::AtomicBool;
+use std::sync::mpsc::{Receiver, Sender};
 use egui::epaint::ahash::{HashMap, HashMapExt};
 use egui::Context;
 use egui_wgpu::ScreenDescriptor;
@@ -13,7 +14,7 @@ use wgpu::{Color, CommandEncoderDescriptor, Extent3d, ImageCopyTexture, LoadOp, 
 use winit::application::ApplicationHandler;
 use winit::dpi::{PhysicalSize, Size};
 use winit::event::{ElementState, Event, StartCause, WindowEvent};
-use winit::event_loop::{ActiveEventLoop, ControlFlow, DeviceEvents, EventLoop, EventLoopProxy};
+use winit::event_loop::{ActiveEventLoop, ControlFlow, DeviceEvents, EventLoop, EventLoopBuilder, EventLoopProxy};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowAttributes, WindowId};
 
@@ -666,5 +667,80 @@ impl ApplicationHandler<EventLoopMessage> for WindowManager {
         for x in created_windows {
             self.windows.insert(x.id, RefCell::new(Box::new(x)));
         }
+    }
+}
+
+enum AsyncMsg {
+    WindowEvent((WindowId, WindowEvent))
+}
+
+struct AsyncWindowManagerInner {
+    window_manager: WindowManager,
+    event_loop: ActiveEventLoop,
+    recv: Receiver<AsyncMsg>,
+}
+
+impl AsyncWindowManagerInner {
+    fn run_loop(mut self) {
+        loop {
+            self.window_manager.new_events(&self.event_loop, StartCause::Poll);
+            
+            while let Ok(msg) = self.recv.try_recv() {
+                match msg {
+                    AsyncMsg::WindowEvent((id, e)) => {
+                        self.window_manager.window_event(&self.event_loop, id, e);
+                    }
+                }
+            }
+            self.window_manager.about_to_wait(&self.event_loop);
+        }
+    }
+}
+
+pub struct AsyncWindowManager {
+    sender: Sender<AsyncMsg>
+}
+
+impl AsyncWindowManager {
+    pub(crate) fn new(el: &EventLoop<EventLoopMessage>) -> anyhow::Result<Self> {
+        let wm = WindowManager::new(el)?;
+        let ael = EventLoopBuilder::default().build().unwrap();
+        Ok(Self {
+            sender: wm,
+        })
+    }
+}
+
+impl ApplicationHandler<EventLoopMessage> for AsyncWindowManager {
+    fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: StartCause) {
+        todo!()
+    }
+
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        todo!()
+    }
+
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: EventLoopMessage) {
+        todo!()
+    }
+
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, window_id: WindowId, event: WindowEvent) {
+        todo!()
+    }
+
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        todo!()
+    }
+
+    fn suspended(&mut self, event_loop: &ActiveEventLoop) {
+        todo!()
+    }
+
+    fn exiting(&mut self, event_loop: &ActiveEventLoop) {
+        todo!()
+    }
+
+    fn memory_warning(&mut self, event_loop: &ActiveEventLoop) {
+        todo!()
     }
 }

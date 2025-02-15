@@ -14,7 +14,7 @@ use winit::window::WindowId;
 pub use wait_future::*;
 
 use crate::engine::app::AppInstance;
-use crate::engine::window::{EventLoopProxyType, EventLoopTargetType, WindowInstance};
+use crate::engine::manager::{EventLoopProxyType, EventLoopTargetType, WindowInstance};
 
 mod wait_future;
 
