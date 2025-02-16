@@ -21,31 +21,35 @@ fn _main(event_loop: EventLoop<WinitEventLoopMessage>) {
 
     log::info!("Got the window");
 
-    // let elp = event_loop.create_proxy();
-    // match WindowManager::new(elp) {
-    //     Ok(am) => {
-    //         log::info!("Got the main application");
-    //         am.run_loop(event_loop, InitState::new(Box::new(MenuState::new())));
-    //         STATIC_DATA.cfg_data.write().unwrap().check_save();
-    //     }
-    //     Err(e) => {
-    //         log::error!("Init the app manager failed for {:?}", e);
-    //         eprintln!("Init the app manager failed for {:?}", e);
-    //     }
-    // }
-
-    let start = InitState::new(Box::new(MenuState::new()));
-    match AsyncWindowManager::new(&event_loop, start) {
-        Ok(awm) => {
-            log::info!("Got the async window manager.");
-            awm.run_loop(event_loop);
-            STATIC_DATA.cfg_data.write().unwrap().check_save();
+    let async_loop = true;
+    if async_loop {
+        let start = InitState::new(Box::new(MenuState::new()));
+        match AsyncWindowManager::new(&event_loop, start) {
+            Ok(awm) => {
+                log::info!("Got the async window manager.");
+                awm.run_loop(event_loop);
+                STATIC_DATA.cfg_data.write().unwrap().check_save();
+            }
+            Err(e) => {
+                log::error!("Init the app manager failed for {:?}", e);
+                eprintln!("Init the app manager failed for {:?}", e);
+            }
         }
-        Err(e) => {
-            log::error!("Init the app manager failed for {:?}", e);
-            eprintln!("Init the app manager failed for {:?}", e);
+    } else {
+        let elp = event_loop.create_proxy();
+        match WindowManager::new(elp) {
+            Ok(am) => {
+                log::info!("Got the main application");
+                am.run_loop(event_loop, InitState::new(Box::new(MenuState::new())));
+                STATIC_DATA.cfg_data.write().unwrap().check_save();
+            }
+            Err(e) => {
+                log::error!("Init the app manager failed for {:?}", e);
+                eprintln!("Init the app manager failed for {:?}", e);
+            }
         }
     }
+
 }
 
 #[no_mangle]

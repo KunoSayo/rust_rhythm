@@ -19,8 +19,8 @@ use std::task::Poll;
 use std::thread::JoinHandle;
 use std::time::Instant;
 use wgpu::{
-    Color, CommandEncoderDescriptor, Extent3d, ImageCopyTexture, LoadOp, Operations, Origin3d,
-    RenderPassColorAttachment, RenderPassDescriptor, StoreOp, TextureAspect,
+    Color, CommandEncoderDescriptor, Extent3d, ImageCopyTexture, LoadOp, Maintain, Operations,
+    Origin3d, RenderPassColorAttachment, RenderPassDescriptor, StoreOp, TextureAspect,
 };
 use winit::application::ApplicationHandler;
 use winit::dpi::{PhysicalSize, Size};
@@ -34,6 +34,7 @@ use winit::window::{Window, WindowAttributes, WindowId};
 
 use crate::engine::app::AppInstance;
 use crate::engine::global::IO_POOL;
+use crate::engine::prelude::MaintainBase;
 use crate::engine::{
     GameState, GlobalData, LoopState, MainRendererData, MouseState, Pointer, StateEvent, Trans,
     WgpuData,
@@ -200,7 +201,7 @@ impl WindowInstance {
 
     fn render_once(&mut self, el: &mut GlobalData) {
         if let (Some(gpu),) = (&self.app.gpu,) {
-            profiling::scope!("Render pth once");
+            profiling::scope!("Render once");
             let render_now = std::time::Instant::now();
             let render_dur = render_now.duration_since(self.app.last_render_time);
             let dt = render_dur.as_secs_f32();
@@ -319,12 +320,15 @@ impl WindowInstance {
             let gpu = self.app.gpu.as_ref().unwrap();
 
             // We do get here
+
             let swap_chain_frame = if let Ok(s) = gpu.surface.get_current_texture() {
                 s
             } else {
                 // it is normal.
+                log::warn!("Lose swap chain frame!");
                 return;
             };
+
             {
                 let mut encoder = gpu
                     .device
@@ -688,7 +692,9 @@ impl WindowManager {
                     ..
                 } = wm.app;
 
-                let _ = egui.on_window_event(window, &event);
+                if !matches!(event, WindowEvent::RedrawRequested) {
+                    let _ = egui.on_window_event(window, &event);
+                }
             }
         }
         match event {
@@ -956,22 +962,26 @@ impl AsyncWindowManagerInner {
         Ok(this)
     }
 
-    fn run_loop(mut self) {
+    fn run_loop_inner(mut self) {
         let mut wm = self.window_manager.borrow_mut();
         wm.on_new_events(&self, StartCause::Init);
         wm.on_about_to_wait(&self);
 
         while !self.exiting.get() {
-            let mut should_wait_end_loop = false;
+            let mut should_try_recv = Cell::new(false);
 
             let mut s_msg = None;
             let start_cause = match self.cf.get() {
-                ControlFlow::Poll => StartCause::Poll,
+                ControlFlow::Poll => {
+                    if let Ok(msg) = self.recv.try_recv() {
+                        s_msg = Some(msg);
+                    }
+                    StartCause::Poll
+                }
                 ControlFlow::Wait => {
                     let start = Instant::now();
                     let msg = self.recv.recv().expect("Failed to recv");
                     s_msg = Some(msg);
-                    should_wait_end_loop = true;
                     StartCause::WaitCancelled {
                         start,
                         requested_resume: Some(Instant::now()),
@@ -998,20 +1008,29 @@ impl AsyncWindowManagerInner {
                 LoopMessage::UserEvent(event) => {
                     wm.on_user_event(&self, event);
                 }
-                LoopMessage::NewLoop(l) => {}
+                LoopMessage::NewLoop(l) => {
+                    should_try_recv.set(true);
+                }
                 LoopMessage::Resumed => {
                     wm.on_resumed(&self);
                 }
-                LoopMessage::AboutToWait => {}
+                LoopMessage::AboutToWait => {
+                    should_try_recv.set(false);
+                }
             };
-
             if let Some(msg) = s_msg {
                 process_msg(msg);
             }
-            while let Ok(msg) = self.recv.try_recv() {
-                process_msg(msg);
+
+            'l: while should_try_recv.get() {
+                while let Ok(msg) = self.recv.try_recv() {
+                    process_msg(msg);
+                }
+                std::thread::yield_now();
             }
             wm.on_about_to_wait(&self);
+            log::trace!("Loop inner end");
+            std::thread::yield_now();
         }
     }
 
@@ -1128,7 +1147,7 @@ impl AsyncWindowManager {
             .name("App Thread".to_string())
             .spawn(move || {
                 let inner = AsyncWindowManagerInner::new(elp, rx, ttx, start).unwrap();
-                inner.run_loop();
+                inner.run_loop_inner();
             })
             .expect("Failed to create app thread");
 
@@ -1153,6 +1172,7 @@ impl ApplicationHandler<WinitEventLoopMessage> for AsyncWindowManager {
         if let Err(e) = self.sender.send(LoopMessage::NewLoop(cause)) {
             event_loop.exit();
         }
+        log::trace!(target: "AWM", "New Event");
         event_loop.set_control_flow(ControlFlow::Wait);
     }
 
@@ -1160,10 +1180,13 @@ impl ApplicationHandler<WinitEventLoopMessage> for AsyncWindowManager {
         if let Err(e) = self.sender.send(LoopMessage::Resumed) {
             event_loop.exit();
         }
+        log::trace!(target: "AWM", "Resumed");
+
         event_loop.set_control_flow(ControlFlow::Wait);
     }
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: WinitEventLoopMessage) {
+        log::trace!(target: "AWM", "User event");
         match event {
             WinitEventLoopMessage::WakeUp(w) => {
                 if let Err(e) = self.sender.send(LoopMessage::UserEvent(event)) {
@@ -1189,6 +1212,7 @@ impl ApplicationHandler<WinitEventLoopMessage> for AsyncWindowManager {
         window_id: WindowId,
         event: WindowEvent,
     ) {
+        log::trace!(target: "AWM", "Window Event");
         let now = Instant::now();
         self.sender
             .send(LoopMessage::WindowEvent(window_id, event, now))
@@ -1196,6 +1220,8 @@ impl ApplicationHandler<WinitEventLoopMessage> for AsyncWindowManager {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        log::trace!(target: "AWM", "About to wait");
+
         self.sender
             .send(LoopMessage::AboutToWait)
             .inspect_err(|_| event_loop.exit());
