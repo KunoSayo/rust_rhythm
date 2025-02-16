@@ -19,7 +19,7 @@ pub mod renderer3d;
 pub mod uniform;
 pub mod camera;
 
-static INSTANCE: Lazy<Instance> = Lazy::new(|| Instance::new(InstanceDescriptor::default()));
+static INSTANCE: Lazy<Instance> = Lazy::new(|| Instance::new(&InstanceDescriptor::default()));
 
 pub trait Vertex {
     fn desc<'a>() -> VertexBufferLayout<'a>;

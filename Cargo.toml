@@ -15,13 +15,12 @@ crate-type = ["lib", "cdylib"]
 [dependencies]
 
 # graphics
-winit = "0.30.5"
-wgpu = "23.0.1"
-wgpu_text = "0.9.1"
-egui = "0.30.0"
-egui_extras = { version = "0.30"}
-egui-wgpu = "0.30.0"
-egui-winit = "0.30.0"
+winit = "0.30.9"
+wgpu = "24.0.1"
+egui = "0.31.0"
+egui_extras = { version = "0.31.0" }
+egui-wgpu = "0.31.0"
+egui-winit = "0.31.0"
 profiling = "1.0.16"
 image = "0.25"
 
@@ -53,7 +52,6 @@ rand = "0.8"
 num = "0.4"
 nalgebra = { version = "0.33.2", features = ["bytemuck"] }
 dashmap = "6.1.0"
-crossbeam = "0.8"
 serde = { version = "1.0.210", features = ["derive"] }
 ron = "0.8.1"
 rfd = "0.15.1"

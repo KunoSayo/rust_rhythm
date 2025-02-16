@@ -115,8 +115,7 @@ impl WgpuData {
 
         log::info!("Created surface {:?}", surface);
         let adapter = block_on(INSTANCE.request_adapter(&RequestAdapterOptions {
-            power_preference:
-                util::power_preference_from_env().unwrap_or(PowerPreference::HighPerformance),
+            power_preference: PowerPreference::from_env().unwrap_or(PowerPreference::HighPerformance),
             force_fallback_adapter: false,
             compatible_surface: Some(&surface),
         }))

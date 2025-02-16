@@ -9,7 +9,10 @@ use crate::state::editor::note_editor::BeatmapEditorData;
 use anyhow::anyhow;
 use egui::epaint::PathStroke;
 use egui::panel::TopBottomSide;
-use egui::{Align, Button, Color32, Context, Frame, Layout, NumExt, Pos2, Rect, Sense, TextEdit, TextStyle, UiBuilder, Vec2};
+use egui::{
+    Align, Button, Color32, Context, Frame, Layout, NumExt, Pos2, Rect, Sense, Stroke, TextEdit,
+    TextStyle, UiBuilder, Vec2,
+};
 use rodio::{Decoder, OutputStreamHandle, Sink, Source};
 use std::io::{Cursor, Read};
 use std::ops::{Add, ControlFlow, Deref, Mul};
@@ -33,7 +36,6 @@ pub enum SubEditor {
     Timing,
 }
 
-
 pub struct BeatMapEditor {
     pub song_info: Arc<SongInfo>,
     pub beatmap: SongBeatmapFile,
@@ -45,9 +47,8 @@ pub struct BeatMapEditor {
     sample_info: SongSampleInfo,
 
     current_editor: SubEditor,
-    pub dirty: bool
+    pub dirty: bool,
 }
-
 
 pub(in crate::state::editor) struct InputCache {
     pub(in crate::state::editor) escape_time: f32,
@@ -56,7 +57,6 @@ pub(in crate::state::editor) struct InputCache {
     pub(in crate::state::editor) select_timing_group: usize,
     pub(in crate::state::editor) select_timing_row: Option<usize>,
     pub(in crate::state::editor) edit_data: BeatmapEditorData,
-
 }
 
 impl Default for InputCache {
@@ -77,9 +77,12 @@ impl BeatMapEditor {
         Self::with_file(song_info, None, handle)
     }
 
-    pub fn with_file(song_info: Arc<SongInfo>, info: Option<SongBeatmapInfo>, s: OutputStreamHandle) -> anyhow::Result<Self> {
-        let sink = Sink::try_new(&s)
-            .expect("Failed to new sink");
+    pub fn with_file(
+        song_info: Arc<SongInfo>,
+        info: Option<SongBeatmapInfo>,
+        s: OutputStreamHandle,
+    ) -> anyhow::Result<Self> {
+        let sink = Sink::try_new(&s).expect("Failed to new sink");
 
         let mut buf = vec![];
         let mut file = std::fs::File::open(&song_info.bgm_file)?;
@@ -90,12 +93,15 @@ impl BeatMapEditor {
 
         let samples = decoder.convert_samples::<f32>();
 
-        let total_duration = samples.total_duration().ok_or(anyhow!("No audio duration"))?;
+        let total_duration = samples
+            .total_duration()
+            .ok_or(anyhow!("No audio duration"))?;
         sink.pause();
         sink.append(samples);
 
-
-        let vol = STATIC_DATA.cfg_data.write()
+        let vol = STATIC_DATA
+            .cfg_data
+            .write()
             .map_err(|e| anyhow!("Cannot read lock for {:?}", e))?
             .get_f32_def("bgm_vol", 1.0);
         sink.set_volume(vol);
@@ -119,7 +125,9 @@ impl BeatMapEditor {
         let dirty = info.is_none();
         let current_editor = SubEditor::Timing;
         Ok(Self {
-            beatmap: info.map(|x| x.song_beatmap_file).unwrap_or(SongBeatmapFile::new(song_info.title.clone())),
+            beatmap: info
+                .map(|x| x.song_beatmap_file)
+                .unwrap_or(SongBeatmapFile::new(song_info.title.clone())),
             song_info,
             sink,
             save_path: path,
@@ -131,7 +139,6 @@ impl BeatMapEditor {
         })
     }
 }
-
 
 impl GameState for BeatMapEditor {
     fn update(&mut self, s: &mut StateData) -> (Trans, LoopState) {
@@ -149,12 +156,18 @@ impl GameState for BeatMapEditor {
             loop_state = LoopState::POLL;
         }
 
-        if s.app.inputs.is_pressed(&[PhysicalKey::Code(KeyCode::Space)]) {
+        if s.app
+            .inputs
+            .is_pressed(&[PhysicalKey::Code(KeyCode::Space)])
+        {
             self.switch_play();
         }
 
         let cur_input = &s.app.inputs.cur_frame_input;
-        if cur_input.pressing.contains(&PhysicalKey::Code(KeyCode::Escape)) {
+        if cur_input
+            .pressing
+            .contains(&PhysicalKey::Code(KeyCode::Escape))
+        {
             self.input_cache.escape_time += s.dt;
             if self.input_cache.escape_time >= 1.0 {
                 tran = Trans::Pop;
@@ -165,7 +178,6 @@ impl GameState for BeatMapEditor {
 
         (tran, loop_state)
     }
-
 
     fn render(&mut self, s: &mut StateData, ctx: &Context) -> Trans {
         let mut tran = Trans::None;
@@ -192,21 +204,29 @@ impl GameState for BeatMapEditor {
     }
 
     fn stop(&mut self, s: &mut StateData) {
-
         // Do save work
-        if self.save_path.is_none() &&
-            (self.beatmap.metadata.title.is_empty() || self.beatmap.metadata.version.is_empty()) {
+        if self.save_path.is_none()
+            && (self.beatmap.metadata.title.is_empty() || self.beatmap.metadata.version.is_empty())
+        {
             return;
         }
         let path = self.save_path.get_or_insert_with(|| {
-            self.song_info.bgm_file.parent().unwrap()
-                .join(format!("{}[{}]", &self.beatmap.metadata.title, &self.beatmap.metadata.version)
-                    + "." + BEATMAP_EXT)
+            self.song_info.bgm_file.parent().unwrap().join(
+                format!(
+                    "{}[{}]",
+                    &self.beatmap.metadata.title, &self.beatmap.metadata.version
+                ) + "."
+                    + BEATMAP_EXT,
+            )
         });
         let path = path.clone();
         let beatmap = self.beatmap.clone();
         let info = self.song_info.clone();
-        let song_manager = s.wd.world.fetch::<SongManagerResourceType>().deref().clone();
+        let song_manager =
+            s.wd.world
+                .fetch::<SongManagerResourceType>()
+                .deref()
+                .clone();
         IO_POOL.spawn_ok(async move {
             if let Err(e) = beatmap.save_to(&path) {
                 log::error!("Failed to save beatmap for {:?}", e);
@@ -228,11 +248,15 @@ impl GameState for BeatMapEditor {
 impl BeatMapEditor {
     fn get_progress(&self) -> Duration {
         let dur = self.sink.get_pos();
-        dur.mul((1.0 / self.sink.speed()) as u32).min(self.total_duration)
+        dur.mul((1.0 / self.sink.speed()) as u32)
+            .min(self.total_duration)
     }
 
     pub(crate) fn get_beat_iter(&self, secs: f32) -> TimingGroupBeatIterator {
-        self.beatmap.timing_group.get_beat_iterator(self.input_cache.select_timing_group, (secs * 1000.0) as OffsetType)
+        self.beatmap.timing_group.get_beat_iterator(
+            self.input_cache.select_timing_group,
+            (secs * 1000.0) as OffsetType,
+        )
     }
 
     fn set_speed(&self, speed: f32) {
@@ -242,7 +266,8 @@ impl BeatMapEditor {
 
         // speed 1 -> 2
         // duration 30s -> 15s
-        self.sink.try_seek(old_dur.mul_f32(old_speed / speed))
+        self.sink
+            .try_seek(old_dur.mul_f32(old_speed / speed))
             .expect("Failed to fix duration");
     }
 
@@ -255,19 +280,27 @@ impl BeatMapEditor {
                 let width = ui.available_width();
 
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    let button_height = ui.available_height() - ui.spacing().button_padding.y * 2.0 - ui.spacing().item_spacing.y * 2.0;
-                    let button = Button::new("Timing").selected(self.current_editor == SubEditor::Timing).min_size(Vec2::new(0.0, button_height));
+                    let button_height = ui.available_height()
+                        - ui.spacing().button_padding.y * 2.0
+                        - ui.spacing().item_spacing.y * 2.0;
+                    let button = Button::new("Timing")
+                        .selected(self.current_editor == SubEditor::Timing)
+                        .min_size(Vec2::new(0.0, button_height));
 
                     ui.add_space(ui.spacing().button_padding.x);
                     if ui.add(button).clicked() {
                         self.current_editor = SubEditor::Timing;
                     }
-                    let button = Button::new("Beatmap").selected(self.current_editor == SubEditor::Note).min_size(Vec2::new(0.0, button_height));
+                    let button = Button::new("Beatmap")
+                        .selected(self.current_editor == SubEditor::Note)
+                        .min_size(Vec2::new(0.0, button_height));
                     if ui.add(button).clicked() {
                         self.current_editor = SubEditor::Note;
                     }
 
-                    let button = Button::new("Settings").selected(self.current_editor == SubEditor::Settings).min_size(Vec2::new(0.0, button_height));
+                    let button = Button::new("Settings")
+                        .selected(self.current_editor == SubEditor::Settings)
+                        .min_size(Vec2::new(0.0, button_height));
                     if ui.add(button).clicked() {
                         self.current_editor = SubEditor::Settings;
                     }
@@ -275,11 +308,10 @@ impl BeatMapEditor {
             });
     }
 
-
     fn render_top_audio_wave(&mut self, s: &mut StateData, ctx: &Context) {
         let height = 100.0;
         egui::TopBottomPanel::new(TopBottomSide::Top, "editor_top_progress")
-            .frame(Frame::none())
+            .frame(Frame::NONE)
             .min_height(height + 25.0)
             .show(ctx, |ui| {
                 let width = ui.available_width();
@@ -297,7 +329,11 @@ impl BeatMapEditor {
 
                 let wave_area_rect = Rect {
                     min: Pos2::new(start_point.x, start_point.y - 12.5),
-                    max: (start_point.x + progress_width, start_point.y - 12.5 + ui_height).into(),
+                    max: (
+                        start_point.x + progress_width,
+                        start_point.y - 12.5 + ui_height,
+                    )
+                        .into(),
                 };
                 let raw_clip_rect = ui.clip_rect();
                 // Clip to the wave area.
@@ -307,11 +343,12 @@ impl BeatMapEditor {
                 if response.hover_pos().is_some() {
                     ui.input(|input| {
                         self.input_cache.progress_half_time -= input.smooth_scroll_delta.y * 0.01;
-                        self.input_cache.progress_half_time = self.input_cache.progress_half_time.clamp(0.2, 3.0);
+                        self.input_cache.progress_half_time =
+                            self.input_cache.progress_half_time.clamp(0.2, 3.0);
                     });
                 }
-                ui.painter().rect_filled(background_rect, 0.0, Color32::DARK_GRAY);
-
+                ui.painter()
+                    .rect_filled(background_rect, 0.0, Color32::DARK_GRAY);
 
                 let now = self.input_cache.current_duration.as_secs_f32();
                 let right_time = now + self.input_cache.progress_half_time;
@@ -321,45 +358,50 @@ impl BeatMapEditor {
                 let mut vec = Vec::new();
 
                 // min, max
-                vec.resize_with(progress_width as usize, || (AtomicI16::new(0), AtomicI16::new(0)));
+                vec.resize_with(progress_width as usize, || {
+                    (AtomicI16::new(0), AtomicI16::new(0))
+                });
 
-                let time_to_wave_x = |time: f32| {
-                    (time - left_time) * progress_width / time_len + start_point.x
-                };
+                let time_to_wave_x =
+                    |time: f32| (time - left_time) * progress_width / time_len + start_point.x;
 
-                let raw_left_sample_idx = (left_time * self.sample_info.sample_rate as f32) as isize;
+                let raw_left_sample_idx =
+                    (left_time * self.sample_info.sample_rate as f32) as isize;
                 let left_sample_idx = raw_left_sample_idx.at_least(0) as usize;
                 let right_sample_idx = (right_time * self.sample_info.sample_rate as f32) as usize;
 
                 let idx_len = (right_sample_idx as isize - raw_left_sample_idx + 1) as usize;
 
-                let right_sample_idx = right_sample_idx.at_most((self.total_duration.as_secs_f32() * self.sample_info.sample_rate as f32) as usize);
+                let right_sample_idx = right_sample_idx.at_most(
+                    (self.total_duration.as_secs_f32() * self.sample_info.sample_rate as f32)
+                        as usize,
+                );
 
                 use rayon::prelude::*;
 
                 let left_pixel_start = raw_left_sample_idx * vec.len() as isize / idx_len as isize;
 
-                (left_sample_idx.at_least(0)..=right_sample_idx).into_par_iter().for_each(|sample_idx| {
-                    let (mut mn, mut mx) = (0, 0);
-                    for j in 0..self.sample_info.channels as usize {
-                        let cur = self.sample_info.samples[sample_idx * self.sample_info.channels as usize + j];
-                        mn = mn.min(cur);
-                        mx = mx.max(cur);
-                    }
+                (left_sample_idx.at_least(0)..=right_sample_idx)
+                    .into_par_iter()
+                    .for_each(|sample_idx| {
+                        let (mut mn, mut mx) = (0, 0);
+                        for j in 0..self.sample_info.channels as usize {
+                            let cur = self.sample_info.samples
+                                [sample_idx * self.sample_info.channels as usize + j];
+                            mn = mn.min(cur);
+                            mx = mx.max(cur);
+                        }
 
-                    let offset = sample_idx;
+                        let offset = sample_idx;
 
+                        let pixel = offset * vec.len() / idx_len;
+                        let pixel = (pixel as isize - left_pixel_start) as usize;
 
-                    let pixel = offset * vec.len() / idx_len;
-                    let pixel = (pixel as isize - left_pixel_start) as usize;
-
-
-                    if let Some((x, y)) = vec.get(pixel) {
-                        x.fetch_min(mn, Ordering::Relaxed);
-                        y.fetch_max(mx, Ordering::Relaxed);
-                    }
-                });
-
+                        if let Some((x, y)) = vec.get(pixel) {
+                            x.fetch_min(mn, Ordering::Relaxed);
+                            y.fetch_max(mx, Ordering::Relaxed);
+                        }
+                    });
 
                 let painter = ui.painter();
 
@@ -368,20 +410,30 @@ impl BeatMapEditor {
                 let center_y = start_point.y + height * 0.5;
                 let half_height = height * 0.5;
 
-                vec.par_iter_mut().enumerate().for_each(|(offset, (mn, mx))| {
-                    let high = *mx.get_mut() as f32 / mx_val;
-                    let low = *mn.get_mut() as f32 / mx_val;
+                vec.par_iter_mut()
+                    .enumerate()
+                    .for_each(|(offset, (mn, mx))| {
+                        let high = *mx.get_mut() as f32 / mx_val;
+                        let low = *mn.get_mut() as f32 / mx_val;
 
-                    let high = center_y - high.abs() * half_height;
-                    let low = center_y + low.abs() * half_height;
-                    let color = Color32::from_rgb(108, 172, 200);
-                    painter.vline(start_point.x + offset as f32, high..=low, PathStroke::new(1.125, color));
-                });
+                        let high = center_y - high.abs() * half_height;
+                        let low = center_y + low.abs() * half_height;
+                        let color = Color32::from_rgb(108, 172, 200);
+                        painter.vline(
+                            start_point.x + offset as f32,
+                            high..=low,
+                            Stroke::new(1.125, color),
+                        );
+                    });
 
                 // render timings lines
 
-                self.beatmap.timing_group
-                    .get_beat_iterator(self.input_cache.select_timing_group, secs_to_offset_type(left_time))
+                self.beatmap
+                    .timing_group
+                    .get_beat_iterator(
+                        self.input_cache.select_timing_group,
+                        secs_to_offset_type(left_time),
+                    )
                     .filter(|x| x.number >= 0)
                     .try_for_each(|beat| {
                         let beat_x = time_to_wave_x(beat.time as f32 / 1000.0);
@@ -395,17 +447,19 @@ impl BeatMapEditor {
                             start_point.y..=start_point.y + height
                         };
                         let color = Color32::from_gray(if beat.is_measure { 233 } else { 222 });
-                        ui.painter().vline(beat_x, range, PathStroke::new(width, color));
+                        ui.painter().vline(beat_x, range, Stroke::new(width, color));
 
                         ControlFlow::Continue(())
                     });
 
                 ui.set_clip_rect(raw_clip_rect);
 
-
                 // render current line
-                ui.painter().vline(start_point.x + progress_width * 0.5, start_point.y - 12.5..=start_point.y - 12.5 + ui_height,
-                                   PathStroke::new(5.0, Color32::LIGHT_BLUE));
+                ui.painter().vline(
+                    start_point.x + progress_width * 0.5,
+                    start_point.y - 12.5..=start_point.y - 12.5 + ui_height,
+                    Stroke::new(5.0, Color32::LIGHT_BLUE),
+                );
             });
     }
 
@@ -450,8 +504,7 @@ impl BeatMapEditor {
                                 cache.edit(&progress_str, ID);
                             } else if response.lost_focus() {
                                 if let Some(dur) = get_duration_from_str(&cache.text) {
-                                    self.sink.try_seek(dur)
-                                        .expect("Failed to seek");
+                                    self.sink.try_seek(dur).expect("Failed to seek");
                                 }
                                 cache.release();
                             }
@@ -460,111 +513,139 @@ impl BeatMapEditor {
                     });
                 });
 
-                ui.allocate_new_ui(UiBuilder::new()
-                                       .max_rect(Rect {
-                                           min: (start_point.x + 200.0, start_point.y).into(),
-                                           max: (start_point.x + width - 400.0, start_point.y + height).into(),
-                                       }), |ui| {
-                    let start_point = ui.next_widget_position();
-                    let padding = 5.0;
+                ui.allocate_new_ui(
+                    UiBuilder::new().max_rect(Rect {
+                        min: (start_point.x + 200.0, start_point.y).into(),
+                        max: (start_point.x + width - 400.0, start_point.y + height).into(),
+                    }),
+                    |ui| {
+                        let start_point = ui.next_widget_position();
+                        let padding = 5.0;
 
-                    let y_center = start_point.y + height * 0.5;
+                        let y_center = start_point.y + height * 0.5;
 
-                    let progress_width = progress_width - padding * 2.0;
+                        let progress_width = progress_width - padding * 2.0;
 
-                    let progress_start = ui.next_widget_position().x + 5.0;
+                        let progress_start = ui.next_widget_position().x + 5.0;
 
-                    let progress_end = progress_start + progress_width;
+                        let progress_end = progress_start + progress_width;
 
-                    let painter = ui.painter();
-                    let y_range = start_point.y..=start_point.y + height;
+                        let painter = ui.painter();
+                        let y_range = start_point.y..=start_point.y + height;
 
-                    let cur_progress = (self.get_progress().as_secs_f64() / self.total_duration.as_secs_f64()) as f32;
+                        let cur_progress = (self.get_progress().as_secs_f64()
+                            / self.total_duration.as_secs_f64())
+                            as f32;
 
-                    let left_center = (progress_start, y_center);
-                    let right_center = (progress_end, y_center);
-                    painter.vline(progress_start + progress_width * cur_progress, y_range, PathStroke::new(1.0, Color32::RED));
-                    painter.hline(progress_start..=progress_end, start_point.y + height * 0.5, PathStroke::new(1.0, Color32::WHITE));
+                        let left_center = (progress_start, y_center);
+                        let right_center = (progress_end, y_center);
+                        painter.vline(
+                            progress_start + progress_width * cur_progress,
+                            y_range,
+                            Stroke::new(1.0, Color32::RED),
+                        );
+                        painter.hline(
+                            progress_start..=progress_end,
+                            start_point.y + height * 0.5,
+                            Stroke::new(1.0, Color32::WHITE),
+                        );
 
-                    painter.circle_filled(left_center.into(), 3.0, Color32::WHITE);
-                    painter.circle_filled(right_center.into(), 3.0, Color32::WHITE);
+                        painter.circle_filled(left_center.into(), 3.0, Color32::WHITE);
+                        painter.circle_filled(right_center.into(), 3.0, Color32::WHITE);
 
-                    let progress_rect = Rect {
-                        min: (progress_start, start_point.y).into(),
-                        max: (progress_end, start_point.y + height).into(),
-                    };
+                        let progress_rect = Rect {
+                            min: (progress_start, start_point.y).into(),
+                            max: (progress_end, start_point.y + height).into(),
+                        };
 
-                    let response = ui.allocate_rect(progress_rect, Sense::drag());
-                    if (response.dragged() && response.drag_delta().length_sq() != 0.0) || response.drag_started() {
-                        if let Some(pos) = response.interact_pointer_pos() {
-                            let drag_x = pos.x;
-                            let drag_progress = ((drag_x - progress_start) / progress_width).clamp(0.0, 1.0);
+                        let response = ui.allocate_rect(progress_rect, Sense::drag());
+                        if (response.dragged() && response.drag_delta().length_sq() != 0.0)
+                            || response.drag_started()
+                        {
+                            if let Some(pos) = response.interact_pointer_pos() {
+                                let drag_x = pos.x;
+                                let drag_progress =
+                                    ((drag_x - progress_start) / progress_width).clamp(0.0, 1.0);
 
+                                let dest_duration = self.total_duration.mul_f32(drag_progress);
 
-                            let dest_duration = self.total_duration.mul_f32(drag_progress);
-
-
-                            self.sink.try_seek(dest_duration.mul_f32(1.0 / self.sink.speed()))
-                                .expect("Failed to seek");
-                        }
-                    } else if response.contains_pointer() {
-                        ui.input(|input| {
-                            if input.raw_scroll_delta.y == 0.0 {
-                                return;
+                                self.sink
+                                    .try_seek(dest_duration.mul_f32(1.0 / self.sink.speed()))
+                                    .expect("Failed to seek");
                             }
-                            let (left, _, right) = self.beatmap.timing_group.get_near_beat(self.input_cache.select_timing_group, self.input_cache.current_duration.as_millis() as OffsetType);
-                            let dest_time = if input.raw_scroll_delta.y < 0.0 {
-                                // go right
-                                right.time
-                            } else {
-                                // go left
-                                left.time
-                            }.clamp(0, self.total_duration.as_millis() as OffsetType);
+                        } else if response.contains_pointer() {
+                            ui.input(|input| {
+                                if input.raw_scroll_delta.y == 0.0 {
+                                    return;
+                                }
+                                let (left, _, right) = self.beatmap.timing_group.get_near_beat(
+                                    self.input_cache.select_timing_group,
+                                    self.input_cache.current_duration.as_millis() as OffsetType,
+                                );
+                                let dest_time = if input.raw_scroll_delta.y < 0.0 {
+                                    // go right
+                                    right.time
+                                } else {
+                                    // go left
+                                    left.time
+                                }
+                                .clamp(0, self.total_duration.as_millis() as OffsetType);
 
-                            self.sink.try_seek(Duration::from_millis(dest_time as u64).mul((1.0 / self.sink.speed()) as u32))
-                                .expect("Failed to seek");
-                        });
-                    }
-                });
+                                self.sink
+                                    .try_seek(
+                                        Duration::from_millis(dest_time as u64)
+                                            .mul((1.0 / self.sink.speed()) as u32),
+                                    )
+                                    .expect("Failed to seek");
+                            });
+                        }
+                    },
+                );
 
                 let button_height = height - 10.0;
 
-                ui.allocate_new_ui(UiBuilder::new()
-                                       .max_rect(Rect {
-                                           min: (start_point.x + width - 400.0, start_point.y + 5.0).into(),
-                                           max: (start_point.x + width, start_point.y + 5.0 + button_height).into(),
-                                       }), |ui| {
-                    ui.horizontal(|ui| {
-                        let text = if self.sink.is_paused() {
-                            "Play"
-                        } else {
-                            "Pause"
-                        };
-                        let item_size = (400.0 - ui.style().spacing.item_spacing.x * 4.0) / 5.0;
-                        let cell_size = (item_size, button_height);
+                ui.allocate_new_ui(
+                    UiBuilder::new().max_rect(Rect {
+                        min: (start_point.x + width - 400.0, start_point.y + 5.0).into(),
+                        max: (start_point.x + width, start_point.y + 5.0 + button_height).into(),
+                    }),
+                    |ui| {
+                        ui.horizontal(|ui| {
+                            let text = if self.sink.is_paused() {
+                                "Play"
+                            } else {
+                                "Pause"
+                            };
+                            let item_size = (400.0 - ui.style().spacing.item_spacing.x * 4.0) / 5.0;
+                            let cell_size = (item_size, button_height);
 
-                        let play_button = Button::new(text)
-                            .min_size(cell_size.into());
+                            let play_button = Button::new(text).min_size(cell_size.into());
 
-                        if ui.add_sized(cell_size, play_button).clicked() {
-                            self.switch_play();
-                        }
-
-
-                        for speed in [0.25, 0.5, 0.75, 1.0] {
-                            if ui.add_sized(cell_size, Button::new(speed.to_string()).min_size(cell_size.into())).clicked() {
-                                self.set_speed(speed);
+                            if ui.add_sized(cell_size, play_button).clicked() {
+                                self.switch_play();
                             }
-                        }
-                    })
-                })
+
+                            for speed in [0.25, 0.5, 0.75, 1.0] {
+                                if ui
+                                    .add_sized(
+                                        cell_size,
+                                        Button::new(speed.to_string()).min_size(cell_size.into()),
+                                    )
+                                    .clicked()
+                                {
+                                    self.set_speed(speed);
+                                }
+                            }
+                        })
+                    },
+                )
             });
     }
 
     fn check_sink(&self) {
         if self.sink.empty() {
-            let decoder = Decoder::new(self.sample_info.raw_data.clone())
-                .expect("We should not failed");
+            let decoder =
+                Decoder::new(self.sample_info.raw_data.clone()).expect("We should not failed");
 
             let samples = decoder.convert_samples::<f32>();
 
@@ -575,7 +656,9 @@ impl BeatMapEditor {
     fn switch_play(&self) {
         if self.sink.is_paused() {
             if self.get_progress() + Duration::from_millis(1) >= self.total_duration {
-                self.sink.try_seek(Duration::new(0, 0)).expect("Seek failed");
+                self.sink
+                    .try_seek(Duration::new(0, 0))
+                    .expect("Seek failed");
             }
 
             self.sink.play();
@@ -600,8 +683,19 @@ pub fn format_ms(ms: i128) -> String {
 pub fn get_duration_from_str(str: &str) -> Option<Duration> {
     let mut it = str.rsplitn(3, ":");
     let ms = it.next()?.parse::<u64>().ok()?;
-    let s = it.next().map(|x| x.parse::<u64>().ok()).unwrap_or(Some(0))?;
-    let m = it.next().map(|x| x.parse::<u64>().ok()).unwrap_or(Some(0))?;
+    let s = it
+        .next()
+        .map(|x| x.parse::<u64>().ok())
+        .unwrap_or(Some(0))?;
+    let m = it
+        .next()
+        .map(|x| x.parse::<u64>().ok())
+        .unwrap_or(Some(0))?;
 
-    Some(Duration::from_millis(ms.checked_add(s.checked_mul(1000)?.checked_add(m.checked_mul(1000 * 60)?)?)?))
+    Some(Duration::from_millis(
+        ms.checked_add(
+            s.checked_mul(1000)?
+                .checked_add(m.checked_mul(1000 * 60)?)?,
+        )?,
+    ))
 }
