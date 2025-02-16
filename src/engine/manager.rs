@@ -1026,11 +1026,9 @@ impl AsyncWindowManagerInner {
                 while let Ok(msg) = self.recv.try_recv() {
                     process_msg(msg);
                 }
-                std::thread::yield_now();
             }
             wm.on_about_to_wait(&self);
             log::trace!("Loop inner end");
-            std::thread::yield_now();
         }
     }
 
