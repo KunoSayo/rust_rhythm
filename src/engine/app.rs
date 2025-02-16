@@ -6,7 +6,7 @@ use log::{info, warn};
 use specs::{World, WorldExt};
 use winit::window::Window;
 
-use crate::engine::manager::EventLoopTargetType;
+use crate::engine::manager::{EngineEventLoopProxy, EventLoopTargetType};
 use crate::engine::{AudioData, BakedInputs, MainRendererData, ResourceManager, WgpuData};
 
 pub struct AppInstance {
@@ -26,7 +26,7 @@ pub struct AppInstance {
 }
 
 impl AppInstance {
-    fn new_with_gpu(window: Window, event_loop: &EventLoopTargetType, gpu: Option<WgpuData>) -> anyhow::Result<Self> {
+    fn new_with_gpu(window: Window, gpu: Option<WgpuData>) -> anyhow::Result<Self> {
         let res = ResourceManager::new()?;
         let render = if let Some(gpu) = &gpu {
             Some(MainRendererData::new(gpu, &res))
@@ -47,23 +47,32 @@ impl AppInstance {
             // info!("Set the egui context scale factor to {}", window.scale_factor());
         }
 
-        let egui = State::new(egui_ctx.clone(), ViewportId::ROOT, &window, egui_ctx.native_pixels_per_point(), None, None);
+        let egui = State::new(
+            egui_ctx.clone(),
+            ViewportId::ROOT,
+            &window,
+            egui_ctx.native_pixels_per_point(),
+            None,
+            None,
+        );
 
-        let al = std::panic::catch_unwind(|| {
-            match AudioData::new() {
-                Ok(al) => Some(al),
-                Err(e) => {
-                    warn!("Load audio failed for {:?}", e);
-                    None
-                }
+        let al = std::panic::catch_unwind(|| match AudioData::new() {
+            Ok(al) => Some(al),
+            Err(e) => {
+                warn!("Load audio failed for {:?}", e);
+                None
             }
-        }).unwrap_or_else(|e| {
-            warn!("Get audio even panicked for {:?} with type id {:?}", e, e.type_id());
+        })
+        .unwrap_or_else(|e| {
+            warn!(
+                "Get audio even panicked for {:?} with type id {:?}",
+                e,
+                e.type_id()
+            );
             None
         });
 
         info!("Creating thread pool");
-
 
         info!("Almost got all window instance field");
         Ok(Self {
@@ -83,16 +92,14 @@ impl AppInstance {
 
     /// Create the app instance with the same gpu data
     #[inline]
-    pub fn create_from_gpu(window: Window, event_loop: &EventLoopTargetType, gpu: &WgpuData) -> anyhow::Result<Self> {
+    pub fn create_from_gpu(window: Window, gpu: &WgpuData) -> anyhow::Result<Self> {
         let gpu = WgpuData::create_from_exists(&window, gpu).ok();
-        Self::new_with_gpu(window, event_loop, gpu)
+        Self::new_with_gpu(window, gpu)
     }
 
     #[inline]
-    pub fn new(window: Window, event_loop: &EventLoopTargetType) -> anyhow::Result<Self> {
-        let gpu = WgpuData::new(&window).ok();
-        Self::new_with_gpu(window, event_loop, gpu)
+    pub fn new(window: Window, el: &impl EngineEventLoopProxy) -> anyhow::Result<Self> {
+        let gpu = WgpuData::new(&window, el).ok();
+        Self::new_with_gpu(window, gpu)
     }
 }
-
-

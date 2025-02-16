@@ -14,7 +14,7 @@ use winit::window::WindowId;
 pub use wait_future::*;
 
 use crate::engine::app::AppInstance;
-use crate::engine::manager::{EventLoopProxyType, EventLoopTargetType, WindowInstance};
+use crate::engine::manager::{EngineEventLoopProxy, EventLoopProxyType, EventLoopTargetType, WindowInstance};
 
 mod wait_future;
 
@@ -45,7 +45,7 @@ impl Default for Trans {
 }
 
 pub struct GlobalData<'a> {
-    pub el: &'a EventLoopTargetType,
+    pub el: &'a dyn EngineEventLoopProxy,
     pub elp: &'a EventLoopProxyType,
     pub windows: &'a HashMap<WindowId, RefCell<Box<WindowInstance>>>,
     pub new_windows: &'a mut Vec<WindowInstance>,

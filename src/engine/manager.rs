@@ -1,26 +1,43 @@
 use egui::epaint::ahash::{HashMap, HashMapExt};
 use egui::Context;
 use egui_wgpu::ScreenDescriptor;
-use futures::executor::ThreadPool;
+use futures::executor::{block_on, LocalSpawner, ThreadPool};
+use futures::future::RemoteHandle;
+use futures::task::SpawnExt;
+use futures::FutureExt;
 use log::info;
 use specs::World;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::default::Default;
-use std::ops::DerefMut;
+use std::future::Future;
+use std::ops::{Deref, DerefMut};
+use std::pin::Pin;
 use std::sync::atomic::AtomicBool;
-use std::sync::mpsc::{Receiver, Sender};
-use wgpu::{Color, CommandEncoderDescriptor, Extent3d, ImageCopyTexture, LoadOp, Operations, Origin3d, RenderPassColorAttachment, RenderPassDescriptor, StoreOp, TextureAspect};
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::task::Poll;
+use std::thread::JoinHandle;
+use std::time::Instant;
+use wgpu::{
+    Color, CommandEncoderDescriptor, Extent3d, ImageCopyTexture, LoadOp, Operations, Origin3d,
+    RenderPassColorAttachment, RenderPassDescriptor, StoreOp, TextureAspect,
+};
 use winit::application::ApplicationHandler;
 use winit::dpi::{PhysicalSize, Size};
+use winit::error::OsError;
 use winit::event::{ElementState, Event, MouseButton, StartCause, TouchPhase, WindowEvent};
-use winit::event_loop::{ActiveEventLoop, ControlFlow, DeviceEvents, EventLoop, EventLoopBuilder, EventLoopProxy};
+use winit::event_loop::{
+    ActiveEventLoop, ControlFlow, DeviceEvents, EventLoop, EventLoopBuilder, EventLoopProxy,
+};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowAttributes, WindowId};
 
 use crate::engine::app::AppInstance;
 use crate::engine::global::IO_POOL;
-use crate::engine::{GameState, GlobalData, LoopState, MainRendererData, MouseState, Pointer, StateEvent, Trans, WgpuData};
+use crate::engine::{
+    GameState, GlobalData, LoopState, MainRendererData, MouseState, Pointer, StateEvent, Trans,
+    WgpuData,
+};
 
 #[derive(Default)]
 struct LoopInfo {
@@ -46,14 +63,14 @@ pub struct WindowInstance {
 }
 
 #[non_exhaustive]
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-pub enum EventLoopMessage {
+#[derive(Debug)]
+pub enum WinitEventLoopMessage {
     WakeUp(WindowId),
+    CheckAsyncMsg,
 }
 
 pub type EventLoopTargetType = ActiveEventLoop;
-pub type EventLoopProxyType = EventLoopProxy<EventLoopMessage>;
-
+pub type EventLoopProxyType = EventLoopProxy<WinitEventLoopMessage>;
 
 impl WindowInstance {
     pub fn is_running(&self) -> bool {
@@ -65,14 +82,17 @@ impl WindowInstance {
     }
 }
 
-
 #[allow(unused)]
 impl WindowInstance {
-    pub fn new_with_gpu(title: &str, setup: impl FnOnce(WindowAttributes) -> WindowAttributes, el: &EventLoopTargetType, gpu: &WgpuData) -> anyhow::Result<Self> {
-        let window = el.create_window(setup(WindowAttributes::default())
-            .with_title(title))?;
+    pub fn new_with_gpu(
+        title: &str,
+        setup: impl FnOnce(WindowAttributes) -> WindowAttributes,
+        el: impl EngineEventLoopProxy,
+        gpu: &WgpuData,
+    ) -> anyhow::Result<Self> {
+        let window = el.create_window(setup(WindowAttributes::default()).with_title(title))?;
         let id = window.id();
-        let app = AppInstance::create_from_gpu(window, el, gpu)?;
+        let app = AppInstance::create_from_gpu(window, gpu)?;
         Ok(Self {
             id,
             app,
@@ -82,11 +102,14 @@ impl WindowInstance {
         })
     }
 
-    pub fn new(title: &str, setup: impl FnOnce(WindowAttributes) -> WindowAttributes, el: &EventLoopTargetType) -> anyhow::Result<Self> {
-        let window = el.create_window(setup(WindowAttributes::default()
-            .with_title(title)))?;
+    pub fn new(
+        title: &str,
+        setup: impl FnOnce(WindowAttributes) -> WindowAttributes,
+        el: impl EngineEventLoopProxy,
+    ) -> anyhow::Result<Self> {
+        let window = el.create_window(setup(WindowAttributes::default().with_title(title)))?;
         let id = window.id();
-        let app = AppInstance::new(window, el)?;
+        let app = AppInstance::new(window, &el)?;
         Ok(Self {
             id,
             app,
@@ -96,7 +119,7 @@ impl WindowInstance {
         })
     }
 
-    pub fn new_from_window(window: Window, el: &EventLoopTargetType) -> anyhow::Result<Self> {
+    pub fn new_from_window(window: Window, el: &impl EngineEventLoopProxy) -> anyhow::Result<Self> {
         Ok(Self {
             id: window.id(),
             app: AppInstance::new(window, el)?,
@@ -109,11 +132,10 @@ impl WindowInstance {
 /// put app and el here
 macro_rules! get_state {
     ($app: expr, $el: expr) => {{
-
         crate::engine::state::StateData {
             app: &mut $app,
             wd: $el,
-            dt: 0.0
+            dt: 0.0,
         }
     }};
 }
@@ -123,7 +145,6 @@ impl WindowInstance {
         profiling::scope!("Loop logic once");
         let now = std::time::Instant::now();
         let dt = now.duration_since(self.app.last_update_time).as_secs_f32();
-
 
         self.loop_info.loop_state.reset(0.0);
         self.app.inputs.mouse_state = self.loop_info.mouse_input;
@@ -137,16 +158,13 @@ impl WindowInstance {
                 self.loop_info.loop_state |= x.shadow_update(&mut state_data);
             }
             if let Some(last) = self.states.last_mut() {
-                let ((tran, l), wd) = {
-                    (last.update(&mut state_data), state_data.wd)
-                };
+                let ((tran, l), wd) = { (last.update(&mut state_data), state_data.wd) };
                 self.process_tran(tran, wd);
                 self.loop_info.loop_state |= l;
             }
         }
         self.app.last_update_time = now;
     }
-
 
     fn process_tran(&mut self, tran: Trans, el: &mut GlobalData) {
         let last = self.states.last_mut().unwrap();
@@ -180,16 +198,19 @@ impl WindowInstance {
         }
     }
 
-
     fn render_once(&mut self, el: &mut GlobalData) {
-        if let (Some(gpu), ) = (&self.app.gpu,) {
+        if let (Some(gpu),) = (&self.app.gpu,) {
             profiling::scope!("Render pth once");
             let render_now = std::time::Instant::now();
             let render_dur = render_now.duration_since(self.app.last_render_time);
             let dt = render_dur.as_secs_f32();
             self.loop_info.loop_state.reset(dt);
             {
-                let mut encoder = gpu.device.create_command_encoder(&CommandEncoderDescriptor { label: Some("Clear Encoder") });
+                let mut encoder = gpu
+                    .device
+                    .create_command_encoder(&CommandEncoderDescriptor {
+                        label: Some("Clear Encoder"),
+                    });
                 let _ = encoder.begin_render_pass(&RenderPassDescriptor {
                     label: None,
                     color_attachments: &[Some(RenderPassColorAttachment {
@@ -212,20 +233,21 @@ impl WindowInstance {
                 gpu.queue.submit(Some(encoder.finish()));
             }
 
+            let full_output = self.app.egui_ctx.clone().run(
+                self.app.egui.take_egui_input(&self.app.window),
+                |egui_ctx| {
+                    let mut state_data = get_state!(self.app, el);
+                    state_data.dt = dt;
 
-            let full_output = self.app.egui_ctx.clone().run(self.app.egui.take_egui_input(&self.app.window), |egui_ctx| {
-                let mut state_data = get_state!(self.app, el);
-                state_data.dt = dt;
-
-
-                for game_state in &mut self.states {
-                    game_state.shadow_render(&mut state_data, egui_ctx);
-                }
-                if let Some(g) = self.states.last_mut() {
-                    let tran = g.render(&mut state_data, egui_ctx);
-                    self.process_tran(tran, el);
-                }
-            });
+                    for game_state in &mut self.states {
+                        game_state.shadow_render(&mut state_data, egui_ctx);
+                    }
+                    if let Some(g) = self.states.last_mut() {
+                        let tran = g.render(&mut state_data, egui_ctx);
+                        self.process_tran(tran, el);
+                    }
+                },
+            );
 
             let gpu = self.app.gpu.as_ref().unwrap();
             let render = self.app.render.as_mut().unwrap();
@@ -237,7 +259,6 @@ impl WindowInstance {
                     label: Some("encoder for egui"),
                 });
 
-
                 let screen_descriptor = ScreenDescriptor {
                     size_in_pixels: [gpu.surface_cfg.width, gpu.surface_cfg.height],
                     pixels_per_point: self.app.window.scale_factor() as f32,
@@ -245,72 +266,93 @@ impl WindowInstance {
                 // Upload all resources for the GPU.
 
                 let egui_renderer = &mut render.egui_rpass;
-                let paint_jobs = self.app.egui.egui_ctx()
+                let paint_jobs = self
+                    .app
+                    .egui
+                    .egui_ctx()
                     .tessellate(full_output.shapes, 1.0f32);
                 for (id, delta) in &full_output.textures_delta.set {
                     egui_renderer.update_texture(device, queue, *id, &delta);
                 }
-                egui_renderer.update_buffers(&device, &queue, &mut encoder, &paint_jobs, &screen_descriptor);
+                egui_renderer.update_buffers(
+                    &device,
+                    &queue,
+                    &mut encoder,
+                    &paint_jobs,
+                    &screen_descriptor,
+                );
                 {
-                    let mut rp = encoder.begin_render_pass(&RenderPassDescriptor {
-                        label: None,
-                        color_attachments: &[Some(RenderPassColorAttachment {
-                            view: &gpu.views.get_screen().view,
-                            resolve_target: None,
-                            ops: Operations {
-                                load: LoadOp::Load,
-                                store: StoreOp::Store,
-                            },
-                        })],
-                        depth_stencil_attachment: None,
-                        timestamp_writes: None,
-                        occlusion_query_set: None,
-                    }).forget_lifetime();
-                    egui_renderer.render(
-                        &mut rp,
-                        &paint_jobs,
-                        &screen_descriptor,
-                    );
+                    let mut rp = encoder
+                        .begin_render_pass(&RenderPassDescriptor {
+                            label: None,
+                            color_attachments: &[Some(RenderPassColorAttachment {
+                                view: &gpu.views.get_screen().view,
+                                resolve_target: None,
+                                ops: Operations {
+                                    load: LoadOp::Load,
+                                    store: StoreOp::Store,
+                                },
+                            })],
+                            depth_stencil_attachment: None,
+                            timestamp_writes: None,
+                            occlusion_query_set: None,
+                        })
+                        .forget_lifetime();
+                    egui_renderer.render(&mut rp, &paint_jobs, &screen_descriptor);
                 }
                 // Submit the commands.
                 queue.submit(std::iter::once(encoder.finish()));
-                full_output.textures_delta.free.iter().for_each(|id| egui_renderer.free_texture(id));
+                full_output
+                    .textures_delta
+                    .free
+                    .iter()
+                    .for_each(|id| egui_renderer.free_texture(id));
             }
 
             {
                 let mut sd = get_state!(self.app, el);
                 sd.dt = dt;
-                self.states.iter_mut().for_each(|s| s.on_event(&mut sd, StateEvent::PostUiRender));
+                self.states
+                    .iter_mut()
+                    .for_each(|s| s.on_event(&mut sd, StateEvent::PostUiRender));
             }
             let gpu = self.app.gpu.as_ref().unwrap();
 
             // We do get here
-            let swap_chain_frame = if let Ok(s) = gpu.surface.get_current_texture() { s } else {
+            let swap_chain_frame = if let Ok(s) = gpu.surface.get_current_texture() {
+                s
+            } else {
                 // it is normal.
                 return;
             };
             {
-                let mut encoder = gpu.device.create_command_encoder(&CommandEncoderDescriptor {
-                    label: Some("Copy buffer to screen commands")
-                });
+                let mut encoder = gpu
+                    .device
+                    .create_command_encoder(&CommandEncoderDescriptor {
+                        label: Some("Copy buffer to screen commands"),
+                    });
                 let size = gpu.get_screen_size();
 
                 let surface_output = &swap_chain_frame;
-                encoder.copy_texture_to_texture(ImageCopyTexture {
-                    texture: &gpu.views.get_screen().texture,
-                    mip_level: 0,
-                    origin: Origin3d::default(),
-                    aspect: TextureAspect::All,
-                }, ImageCopyTexture {
-                    texture: &surface_output.texture,
-                    mip_level: 0,
-                    origin: Default::default(),
-                    aspect: TextureAspect::All,
-                }, Extent3d {
-                    width: size.0,
-                    height: size.1,
-                    depth_or_array_layers: 1,
-                });
+                encoder.copy_texture_to_texture(
+                    ImageCopyTexture {
+                        texture: &gpu.views.get_screen().texture,
+                        mip_level: 0,
+                        origin: Origin3d::default(),
+                        aspect: TextureAspect::All,
+                    },
+                    ImageCopyTexture {
+                        texture: &surface_output.texture,
+                        mip_level: 0,
+                        origin: Default::default(),
+                        aspect: TextureAspect::All,
+                    },
+                    Extent3d {
+                        width: size.0,
+                        height: size.1,
+                        depth_or_array_layers: 1,
+                    },
+                );
                 gpu.queue.submit(Some(encoder.finish()));
             }
 
@@ -323,7 +365,9 @@ impl WindowInstance {
             self.app.last_render_time = render_now;
             swap_chain_frame.present();
 
-            self.app.egui.handle_platform_output(&self.app.window, full_output.platform_output);
+            self.app
+                .egui
+                .handle_platform_output(&self.app.window, full_output.platform_output);
             self.app.render.as_mut().unwrap().staging_belt.recall();
         } else {
             // no gpu but we need render it...
@@ -363,20 +407,24 @@ impl WindowInstance {
                         self.loop_info.mouse_input.last_left_click = true;
                     }
                 }
-                self.app.inputs.points.insert(touch.id, Pointer::from(*touch));
+                self.app
+                    .inputs
+                    .points
+                    .insert(touch.id, Pointer::from(*touch));
             }
             WindowEvent::CursorMoved {
-                device_id, position
+                device_id,
+                position,
             } => {
                 self.loop_info.mouse_input.pos = *position;
             }
-            WindowEvent::CursorLeft {
-                ..
-            } => {
+            WindowEvent::CursorLeft { .. } => {
                 self.loop_info.mouse_input.pos = (-9961.0, -9961.0).into();
             }
             WindowEvent::MouseInput {
-                device_id, state, button
+                device_id,
+                state,
+                button,
             } => {
                 if *button == MouseButton::Left {
                     match *state {
@@ -413,7 +461,6 @@ impl WindowInstance {
     }
 }
 
-
 pub struct WindowManager {
     start: Option<Box<dyn GameState>>,
     root: Option<WindowId>,
@@ -426,11 +473,11 @@ pub struct WindowManager {
 }
 
 impl WindowManager {
-    pub(crate) fn new(el: &EventLoop<EventLoopMessage>) -> anyhow::Result<Self> {
+    pub(crate) fn new(elp: EventLoopProxyType) -> anyhow::Result<Self> {
         Ok(Self {
             start: None,
             root: None,
-            proxy: el.create_proxy(),
+            proxy: elp,
             world: Default::default(),
             windows: Default::default(),
             all_events: 0,
@@ -438,8 +485,28 @@ impl WindowManager {
         })
     }
 
+    pub(crate) fn new_with_start(
+        elp: EventLoopProxyType,
+        start: impl GameState,
+    ) -> anyhow::Result<Self> {
+        let mut this = Self {
+            start: None,
+            root: None,
+            proxy: elp,
+            world: Default::default(),
+            windows: Default::default(),
+            all_events: 0,
+            draw_events: 0,
+        };
+        this.start = Some(Box::new(start));
+        Ok(this)
+    }
 
-    pub(crate) fn run_loop(mut self, event_loop: EventLoop<EventLoopMessage>, start: impl GameState) {
+    pub(crate) fn run_loop(
+        mut self,
+        event_loop: EventLoop<WinitEventLoopMessage>,
+        start: impl GameState,
+    ) {
         self.start = Some(Box::new(start));
         event_loop.listen_device_events(DeviceEvents::Never);
         let result = event_loop.run_app(&mut self);
@@ -449,9 +516,48 @@ impl WindowManager {
     }
 }
 
+pub trait EngineEventLoopProxy {
+    fn control_flow(&self) -> ControlFlow;
 
-impl ApplicationHandler<EventLoopMessage> for WindowManager {
-    fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: StartCause) {
+    fn exiting(&self) -> bool;
+
+    fn exit(&self);
+
+    fn create_window(&self, attr: WindowAttributes) -> Result<Window, OsError>;
+
+    fn set_control_flow(&self, cf: ControlFlow);
+
+    fn run_loop_task(&self, f: Box<dyn FnOnce(&ActiveEventLoop) + Send>);
+}
+
+impl EngineEventLoopProxy for &ActiveEventLoop {
+    fn control_flow(&self) -> ControlFlow {
+        ActiveEventLoop::control_flow(self)
+    }
+
+    fn exiting(&self) -> bool {
+        ActiveEventLoop::exiting(self)
+    }
+
+    fn exit(&self) {
+        ActiveEventLoop::exit(self)
+    }
+
+    fn create_window(&self, attr: WindowAttributes) -> Result<Window, OsError> {
+        ActiveEventLoop::create_window(self, attr)
+    }
+
+    fn set_control_flow(&self, cf: ControlFlow) {
+        ActiveEventLoop::set_control_flow(self, cf);
+    }
+
+    fn run_loop_task(&self, f: Box<dyn FnOnce(&ActiveEventLoop) + Send>) {
+        f(self);
+    }
+}
+
+impl WindowManager {
+    fn on_new_events(&mut self, el: impl EngineEventLoopProxy, cause: StartCause) {
         profiling::finish_frame!();
         self.all_events = 0;
         if cause == StartCause::Poll {
@@ -460,7 +566,7 @@ impl ApplicationHandler<EventLoopMessage> for WindowManager {
         self.draw_events = 0;
     }
 
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+    fn on_resumed(&mut self, event_loop: impl EngineEventLoopProxy) {
         let mut created_windows = Vec::new();
 
         if self.root.is_none() {
@@ -470,16 +576,29 @@ impl ApplicationHandler<EventLoopMessage> for WindowManager {
                 .with_title("Rust Rhythm")
                 .with_inner_size(PhysicalSize::new(1600, 900));
 
-            let window = event_loop.create_window(attr).expect("Create window failed");
+            let window = event_loop
+                .create_window(attr)
+                .expect("Create window failed");
             let rid = window.id();
             self.root = Some(rid);
-            self.windows.insert(window.id(), RefCell::new(Box::new(WindowInstance::new_from_window(window, event_loop)
-                .unwrap()
-            )));
+            self.windows.insert(
+                window.id(),
+                RefCell::new(Box::new(
+                    WindowInstance::new_from_window(window, &event_loop).unwrap(),
+                )),
+            );
 
-            let mut wd = GlobalData { el: &event_loop, elp: &self.proxy, windows: &self.windows, new_windows: &mut created_windows, world: &mut self.world };
+            let mut wd = GlobalData {
+                el: &event_loop,
+                elp: &self.proxy,
+                windows: &self.windows,
+                new_windows: &mut created_windows,
+                world: &mut self.world,
+            };
             let root_window_ins = self.windows.get(&rid).unwrap();
-            root_window_ins.borrow_mut().start(self.start.take().unwrap(), &mut wd);
+            root_window_ins
+                .borrow_mut()
+                .start(self.start.take().unwrap(), &mut wd);
             for x in created_windows {
                 let id = x.app.window.id();
                 self.windows.insert(id, RefCell::new(Box::new(x)));
@@ -492,27 +611,40 @@ impl ApplicationHandler<EventLoopMessage> for WindowManager {
             let mut this = this.borrow_mut();
             if this.app.gpu.is_none() {
                 info!("gpu not found, try to init");
-                this.app.gpu = WgpuData::new(&this.app.window).ok();
+                this.app.gpu = match WgpuData::new(&this.app.window, &event_loop) {
+                    Ok(gpu) => Some(gpu),
+                    Err(err) => {
+                        log::error!("Failed to create wgpu data when on resumed for {:?}", err);
+                        None
+                    }
+                };
                 if let Some(gpu) = &this.app.gpu {
                     this.app.render = Some(MainRendererData::new(gpu, &this.app.res));
-                    let mut gd = GlobalData { el: event_loop, elp: &self.proxy, windows: &self.windows, new_windows: &mut created_windows, world: &mut self.world };
+                    let mut gd = GlobalData {
+                        el: &event_loop,
+                        elp: &self.proxy,
+                        windows: &self.windows,
+                        new_windows: &mut created_windows,
+                        world: &mut self.world,
+                    };
                     let WindowInstance {
                         ref mut app,
                         ref mut states,
                         ..
                     } = this.deref_mut().deref_mut();
                     let sd = &mut get_state!(*app, &mut gd);
-                    states.iter_mut().for_each(|x| x.on_event(sd, StateEvent::ReloadGPU));
+                    states
+                        .iter_mut()
+                        .for_each(|x| x.on_event(sd, StateEvent::ReloadGPU));
                 }
 
                 // this.app.egui_ctx = Context::default();
                 let size = this.app.window.inner_size();
                 // this.app.egui_ctx.set_pixels_per_point(this.app.window.scale_factor() as f32);
-                let WindowInstance {
-                    ref mut app,
-                    ..
-                } = this.deref_mut().deref_mut();
-                let _ = app.egui.on_window_event(&app.window, &WindowEvent::Resized(size));
+                let WindowInstance { ref mut app, .. } = this.deref_mut().deref_mut();
+                let _ = app
+                    .egui
+                    .on_window_event(&app.window, &WindowEvent::Resized(size));
             }
         }
         for x in created_windows {
@@ -520,19 +652,13 @@ impl ApplicationHandler<EventLoopMessage> for WindowManager {
         }
     }
 
-    fn user_event(&mut self, event_loop: &ActiveEventLoop, user_event: EventLoopMessage) {
-        match user_event {
-            EventLoopMessage::WakeUp(id) => {
-                if let Some(this) = self.windows.get_mut(&id) {
-                    event_loop.set_control_flow(ControlFlow::Poll);
-                    this.get_mut().loop_info.got_event = true;
-                }
-            }
-        }
-    }
-
-
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, window_id: WindowId, event: WindowEvent) {
+    fn on_window_event(
+        &mut self,
+        event_loop: impl EngineEventLoopProxy,
+        window_id: WindowId,
+        event: WindowEvent,
+        time: Instant,
+    ) {
         log::trace!(target: "winit_event", "{:?}", event);
         self.all_events += 1;
         let control_flow = event_loop.control_flow();
@@ -545,7 +671,13 @@ impl ApplicationHandler<EventLoopMessage> for WindowManager {
 
         {
             if let Some(window) = self.windows.get(&window_id) {
-                let mut wd = GlobalData { el: event_loop, elp: &self.proxy, windows: &self.windows, new_windows: &mut created_windows, world: &mut self.world };
+                let mut wd = GlobalData {
+                    el: &event_loop,
+                    elp: &self.proxy,
+                    windows: &self.windows,
+                    new_windows: &mut created_windows,
+                    world: &mut self.world,
+                };
 
                 let mut wm = window.borrow_mut();
                 wm.on_window_event(&event, &mut wd);
@@ -576,7 +708,6 @@ impl ApplicationHandler<EventLoopMessage> for WindowManager {
                     }
                 }
             }
-
             WindowEvent::Resized(size) => {
                 if let Some(this) = self.windows.get_mut(&window_id) {
                     if !this.get_mut().is_running() {
@@ -584,12 +715,16 @@ impl ApplicationHandler<EventLoopMessage> for WindowManager {
                     } else if size.width > 1 && size.height > 1 {
                         let this = this.get_mut();
                         if let Some(gpu) = &mut this.app.gpu {
-                            info!("Window resized ({}x{}), telling gpu data", size.width, size.height);
+                            info!(
+                                "Window resized ({}x{}), telling gpu data",
+                                size.width, size.height
+                            );
                             gpu.resize(size.width, size.height);
                             match &mut this.app.render {
                                 Some(_) => {}
                                 _ => {
-                                    this.app.render = Some(MainRendererData::new(gpu, &this.app.res));
+                                    this.app.render =
+                                        Some(MainRendererData::new(gpu, &this.app.res));
                                 }
                             }
                         }
@@ -606,16 +741,26 @@ impl ApplicationHandler<EventLoopMessage> for WindowManager {
                     'update: {
                         let mut this = &mut this;
                         let this = this.deref_mut();
-                        if !this.loop_info.got_event && this.loop_info.loop_state.control_flow == ControlFlow::Wait {
+                        if !this.loop_info.got_event
+                            && this.loop_info.loop_state.control_flow == ControlFlow::Wait
+                        {
                             break 'update;
                         }
                         if this.states.is_empty() {
                             this.running = false;
                         }
                         if this.running {
-                            let mut wd = GlobalData { el: event_loop, elp: &self.proxy, windows: &self.windows, new_windows: &mut created_windows, world: &mut self.world };
+                            let mut wd = GlobalData {
+                                el: &event_loop,
+                                elp: &self.proxy,
+                                windows: &self.windows,
+                                new_windows: &mut created_windows,
+                                world: &mut self.world,
+                            };
                             this.render_once(&mut wd);
-                            if this.loop_info.loop_state.render > 0.0 || this.app.egui_ctx.has_requested_repaint() {
+                            if this.loop_info.loop_state.render > 0.0
+                                || this.app.egui_ctx.has_requested_repaint()
+                            {
                                 this.app.window.request_redraw();
                             }
                         } else {
@@ -646,7 +791,25 @@ impl ApplicationHandler<EventLoopMessage> for WindowManager {
         }
     }
 
-    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+    fn on_user_event(
+        &mut self,
+        event_loop: impl EngineEventLoopProxy,
+        user_event: WinitEventLoopMessage,
+    ) {
+        match user_event {
+            WinitEventLoopMessage::WakeUp(id) => {
+                if let Some(this) = self.windows.get_mut(&id) {
+                    event_loop.set_control_flow(ControlFlow::Poll);
+                    this.get_mut().loop_info.got_event = true;
+                }
+            }
+            WinitEventLoopMessage::CheckAsyncMsg => {
+                // Nothing to check.
+            }
+        }
+    }
+
+    fn on_about_to_wait(&mut self, event_loop: impl EngineEventLoopProxy) {
         if event_loop.exiting() {
             return;
         }
@@ -670,12 +833,18 @@ impl ApplicationHandler<EventLoopMessage> for WindowManager {
             'update: {
                 let mut this = &mut this;
                 let this = this.deref_mut();
-                if !this.loop_info.got_event && this.loop_info.loop_state.control_flow == ControlFlow::Wait {
+                if !this.loop_info.got_event
+                    && this.loop_info.loop_state.control_flow == ControlFlow::Wait
+                {
                     break 'update;
                 }
-                if !this.loop_info.pressed_keys.is_empty() || !this.loop_info.released_keys.is_empty() {
+                if !this.loop_info.pressed_keys.is_empty()
+                    || !this.loop_info.released_keys.is_empty()
+                {
                     log::trace!(target: "InputTrace", "process window {:?} pressed_key {:?} and released {:?}", window_id, this.loop_info.pressed_keys, this.loop_info.released_keys);
-                    this.app.inputs.process(&this.loop_info.pressed_keys, &this.loop_info.released_keys);
+                    this.app
+                        .inputs
+                        .process(&this.loop_info.pressed_keys, &this.loop_info.released_keys);
                     this.loop_info.pressed_keys.clear();
                     this.loop_info.released_keys.clear();
                 }
@@ -683,7 +852,13 @@ impl ApplicationHandler<EventLoopMessage> for WindowManager {
                     this.running = false;
                 }
                 if this.running {
-                    let mut wd = GlobalData { el: event_loop, elp: &self.proxy, windows: &self.windows, new_windows: &mut created_windows, world: &mut self.world };
+                    let mut wd = GlobalData {
+                        el: &event_loop,
+                        elp: &self.proxy,
+                        windows: &self.windows,
+                        new_windows: &mut created_windows,
+                        world: &mut self.world,
+                    };
                     this.loop_once(&mut wd);
                     let ls = this.loop_info.loop_state;
                     if ls.render > 0.0 {
@@ -713,78 +888,324 @@ impl ApplicationHandler<EventLoopMessage> for WindowManager {
     }
 }
 
-enum AsyncMsg {
-    WindowEvent((WindowId, WindowEvent))
+impl ApplicationHandler<WinitEventLoopMessage> for WindowManager {
+    fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: StartCause) {
+        self.on_new_events(event_loop, cause);
+    }
+
+    fn resumed(&mut self, mut event_loop: &ActiveEventLoop) {
+        self.on_resumed(event_loop);
+    }
+
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, user_event: WinitEventLoopMessage) {
+        self.on_user_event(event_loop, user_event);
+    }
+
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window_id: WindowId,
+        event: WindowEvent,
+    ) {
+        self.on_window_event(event_loop, window_id, event, Instant::now())
+    }
+
+    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        self.on_about_to_wait(event_loop);
+    }
+}
+
+#[derive(Debug)]
+enum LoopMessage {
+    NewLoop(StartCause),
+    Resumed,
+    WindowEvent(WindowId, WindowEvent, Instant),
+    UserEvent(WinitEventLoopMessage),
+    AboutToWait,
+}
+
+enum ToLoopMessage {
+    RunTask(Box<dyn FnOnce(&ActiveEventLoop) + Send + 'static>),
 }
 
 struct AsyncWindowManagerInner {
-    window_manager: WindowManager,
-    event_loop: ActiveEventLoop,
-    recv: Receiver<AsyncMsg>,
+    window_manager: RefCell<WindowManager>,
+    elp: EventLoopProxyType,
+    recv: Receiver<LoopMessage>,
+    sender: Sender<ToLoopMessage>,
+    cf: Cell<ControlFlow>,
+    exiting: Cell<bool>,
 }
 
 impl AsyncWindowManagerInner {
-    fn run_loop(mut self) {
-        loop {
-            self.window_manager.new_events(&self.event_loop, StartCause::Poll);
+    /// Should new in app thread.
+    fn new(
+        elp: EventLoopProxyType,
+        rx: Receiver<LoopMessage>,
+        tx: Sender<ToLoopMessage>,
+        start: impl GameState,
+    ) -> anyhow::Result<Self> {
+        let this = Self {
+            window_manager: RefCell::new(WindowManager::new_with_start(elp.clone(), start)?),
+            elp,
+            recv: rx,
+            sender: tx,
+            cf: Cell::new(Default::default()),
+            exiting: Cell::new(false),
+        };
+        Ok(this)
+    }
 
-            while let Ok(msg) = self.recv.try_recv() {
-                match msg {
-                    AsyncMsg::WindowEvent((id, e)) => {
-                        self.window_manager.window_event(&self.event_loop, id, e);
+    fn run_loop(mut self) {
+        let mut wm = self.window_manager.borrow_mut();
+        wm.on_new_events(&self, StartCause::Init);
+        wm.on_about_to_wait(&self);
+
+        while !self.exiting.get() {
+            let mut should_wait_end_loop = false;
+
+            let mut s_msg = None;
+            let start_cause = match self.cf.get() {
+                ControlFlow::Poll => StartCause::Poll,
+                ControlFlow::Wait => {
+                    let start = Instant::now();
+                    let msg = self.recv.recv().expect("Failed to recv");
+                    s_msg = Some(msg);
+                    should_wait_end_loop = true;
+                    StartCause::WaitCancelled {
+                        start,
+                        requested_resume: Some(Instant::now()),
                     }
                 }
+                ControlFlow::WaitUntil(t) => {
+                    let start = Instant::now();
+                    if let Ok(msg) = self.recv.recv_timeout(t.duration_since(start)) {
+                        s_msg = Some(msg);
+                    }
+                    StartCause::ResumeTimeReached {
+                        start,
+                        requested_resume: Instant::now(),
+                    }
+                }
+            };
+
+            wm.on_new_events(&self, start_cause);
+
+            let mut process_msg = |msg| match msg {
+                LoopMessage::WindowEvent(id, e, t) => {
+                    wm.on_window_event(&self, id, e, t);
+                }
+                LoopMessage::UserEvent(event) => {
+                    wm.on_user_event(&self, event);
+                }
+                LoopMessage::NewLoop(l) => {}
+                LoopMessage::Resumed => {
+                    wm.on_resumed(&self);
+                }
+                LoopMessage::AboutToWait => {}
+            };
+
+            if let Some(msg) = s_msg {
+                process_msg(msg);
             }
-            self.window_manager.about_to_wait(&self.event_loop);
+            while let Ok(msg) = self.recv.try_recv() {
+                process_msg(msg);
+            }
+            wm.on_about_to_wait(&self);
         }
+    }
+
+    async fn run_loop_task<T: Send + Sync + 'static>(
+        &self,
+        f: Box<dyn FnOnce(&ActiveEventLoop) -> T + Send>,
+    ) -> T {
+        let (tx, rx) = futures::channel::oneshot::channel();
+        let task = move |el: &'_ ActiveEventLoop| {
+            let result = f(el);
+            tx.send(result);
+        };
+
+        let box_task = Box::new(task);
+        let msg = ToLoopMessage::RunTask(box_task);
+        self.sender.send(msg);
+        self.elp.send_event(WinitEventLoopMessage::CheckAsyncMsg);
+        rx.await.unwrap()
+    }
+}
+
+impl EngineEventLoopProxy for &AsyncWindowManagerInner {
+    fn control_flow(&self) -> ControlFlow {
+        self.cf.get()
+    }
+
+    fn exiting(&self) -> bool {
+        self.exiting.get()
+    }
+
+    fn exit(&self) {
+        self.exiting.set(true)
+    }
+
+    fn create_window(&self, attr: WindowAttributes) -> Result<Window, OsError> {
+        block_on(AsyncWindowManagerInner::run_loop_task(
+            self,
+            Box::new(|el| el.create_window(attr)),
+        ))
+    }
+
+    fn set_control_flow(&self, cf: ControlFlow) {
+        self.cf.set(cf);
+    }
+
+    fn run_loop_task(&self, f: Box<dyn FnOnce(&ActiveEventLoop) + Send>) {
+        block_on(AsyncWindowManagerInner::run_loop_task(
+            self,
+            Box::new(|el| f(el)),
+        ))
+    }
+}
+
+pub trait EngineEventLoopProxyExt<'a, T> {
+    fn run_loop_task_with_result(
+        &'a self,
+        f: Box<dyn FnOnce(&ActiveEventLoop) -> T + Send + Sync + 'a>,
+    ) -> T;
+}
+
+impl<'a, T: EngineEventLoopProxy, R: Send + Sync + 'static> EngineEventLoopProxyExt<'a, R> for T {
+    fn run_loop_task_with_result(
+        &'a self,
+        f: Box<dyn FnOnce(&ActiveEventLoop) -> R + Send + Sync + 'a>,
+    ) -> R {
+        // SAFETY: we await the result.
+        let f = unsafe {
+            std::mem::transmute::<_, Box<dyn FnOnce(&ActiveEventLoop) -> R + Send + Sync + 'static>>(
+                f,
+            )
+        };
+
+        let (tx, rx) = futures::channel::oneshot::channel();
+        let task = move |el: &'_ ActiveEventLoop| {
+            let result = f(el);
+            tx.send(result);
+        };
+
+        let box_task: Box<dyn FnOnce(&ActiveEventLoop) + Send + Sync> = Box::new(task);
+
+        self.run_loop_task(box_task);
+        block_on(rx).unwrap()
     }
 }
 
 pub struct AsyncWindowManager {
-    sender: Sender<AsyncMsg>,
+    /// The sender to run
+    sender: Sender<LoopMessage>,
+    rx: Receiver<ToLoopMessage>,
+    handle: JoinHandle<()>,
+}
+
+struct RunMainThreadTask<T> {
+    handle: RemoteHandle<T>,
+}
+
+impl<T: 'static> Future for RunMainThreadTask<T> {
+    type Output = T;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Self::Output> {
+        self.handle.poll_unpin(cx)
+    }
 }
 
 impl AsyncWindowManager {
-    pub(crate) fn new(el: &EventLoop<EventLoopMessage>) -> anyhow::Result<Self> {
-        // let wm = WindowManager::new(el)?;
-        // let ael = EventLoopBuilder::default().build().unwrap();
-        // Ok(Self {
-        //     sender: wm,
-        // })
-        unimplemented!()
+    pub(crate) fn new(
+        el: &EventLoop<WinitEventLoopMessage>,
+        start: impl GameState + Send,
+    ) -> anyhow::Result<Self> {
+        let elp = el.create_proxy();
+        let (tx, rx) = channel();
+        let (ttx, trx) = channel();
+        let handle = std::thread::Builder::new()
+            .name("App Thread".to_string())
+            .spawn(move || {
+                let inner = AsyncWindowManagerInner::new(elp, rx, ttx, start).unwrap();
+                inner.run_loop();
+            })
+            .expect("Failed to create app thread");
+
+        Ok(Self {
+            sender: tx,
+            rx: trx,
+            handle,
+        })
+    }
+
+    pub(crate) fn run_loop(mut self, event_loop: EventLoop<WinitEventLoopMessage>) {
+        event_loop.listen_device_events(DeviceEvents::Never);
+        let result = event_loop.run_app(&mut self);
+        if let Err(e) = result {
+            log::error!("Failed to run event loop for {:?}", e);
+        }
     }
 }
 
-impl ApplicationHandler<EventLoopMessage> for AsyncWindowManager {
+impl ApplicationHandler<WinitEventLoopMessage> for AsyncWindowManager {
     fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: StartCause) {
-        todo!()
+        if let Err(e) = self.sender.send(LoopMessage::NewLoop(cause)) {
+            event_loop.exit();
+        }
+        event_loop.set_control_flow(ControlFlow::Wait);
     }
 
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        todo!()
+        if let Err(e) = self.sender.send(LoopMessage::Resumed) {
+            event_loop.exit();
+        }
+        event_loop.set_control_flow(ControlFlow::Wait);
     }
 
-    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: EventLoopMessage) {
-        todo!()
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: WinitEventLoopMessage) {
+        match event {
+            WinitEventLoopMessage::WakeUp(w) => {
+                if let Err(e) = self.sender.send(LoopMessage::UserEvent(event)) {
+                    event_loop.exit();
+                }
+            }
+            WinitEventLoopMessage::CheckAsyncMsg => {
+                while let Ok(msg) = self.rx.try_recv() {
+                    match msg {
+                        ToLoopMessage::RunTask(task) => {
+                            task(event_loop);
+                        }
+                    }
+                }
+            }
+        }
+        event_loop.set_control_flow(ControlFlow::Wait);
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, window_id: WindowId, event: WindowEvent) {
-        todo!()
+    fn window_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window_id: WindowId,
+        event: WindowEvent,
+    ) {
+        let now = Instant::now();
+        self.sender
+            .send(LoopMessage::WindowEvent(window_id, event, now))
+            .inspect_err(|_| event_loop.exit());
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        todo!()
+        self.sender
+            .send(LoopMessage::AboutToWait)
+            .inspect_err(|_| event_loop.exit());
     }
 
     fn suspended(&mut self, event_loop: &ActiveEventLoop) {
-        todo!()
+        //
     }
 
-    fn exiting(&mut self, event_loop: &ActiveEventLoop) {
-        todo!()
-    }
+    fn exiting(&mut self, event_loop: &ActiveEventLoop) {}
 
-    fn memory_warning(&mut self, event_loop: &ActiveEventLoop) {
-        todo!()
-    }
+    fn memory_warning(&mut self, event_loop: &ActiveEventLoop) {}
 }

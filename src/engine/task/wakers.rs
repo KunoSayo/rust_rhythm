@@ -3,7 +3,7 @@ use std::task::Wake;
 
 use winit::window::{Window, WindowId};
 
-use crate::engine::manager::{EventLoopMessage, EventLoopProxyType};
+use crate::engine::manager::{WinitEventLoopMessage, EventLoopProxyType};
 
 pub struct WindowWaker {
     proxy: Mutex<EventLoopProxyType>,
@@ -23,7 +23,7 @@ impl WindowWaker {
 impl Wake for WindowWaker {
     fn wake(self: Arc<Self>) {
         let _ = self.proxy.lock().expect("Get proxy lock failed")
-            .send_event(EventLoopMessage::WakeUp(self.window_id));
+            .send_event(WinitEventLoopMessage::WakeUp(self.window_id));
     }
 }
 

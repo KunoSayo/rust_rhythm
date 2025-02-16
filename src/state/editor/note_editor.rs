@@ -3,7 +3,7 @@ use crate::state::editor::editor::BeatMapEditor;
 use egui::epaint::PathStroke;
 use egui::panel::Side;
 use egui::{Color32, Frame, Pos2, Rect, Vec2};
-
+use crate::game::OffsetType;
 
 #[derive(Default)]
 enum PointerType {
@@ -25,7 +25,13 @@ impl Default for BeatmapEditorData {
 }
 
 
+
 impl BeatMapEditor {
+    
+    fn get_note_pos_for_cursor(&self, s: &mut StateData) -> (f32, OffsetType) {
+        unimplemented!();
+    }
+    
     pub fn render_note_editor(&mut self, s: &mut StateData, ctx: &egui::Context) {
         // First we need beautiful frame.
         egui::SidePanel::new(Side::Left, "note_left")
@@ -33,7 +39,9 @@ impl BeatMapEditor {
             .max_width(200.0)
             .resizable(false)
             .show(ctx, |ui| {
-                ui.vertical(|ui| {});
+                ui.vertical(|ui| {
+                    
+                });
             });
 
         let current_time = self.input_cache.current_duration.as_secs_f32();

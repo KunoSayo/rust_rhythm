@@ -1,18 +1,19 @@
+
 use crate::engine::global::STATIC_DATA;
-use crate::engine::manager::{EventLoopMessage, WindowManager};
+use crate::engine::manager::{AsyncWindowManager, WindowManager, WinitEventLoopMessage};
 use crate::state::{InitState, MenuState};
 use winit::event_loop::EventLoop;
 
 mod engine;
-mod state;
 mod game;
+mod state;
 mod ui;
 
 pub fn real_main() {
     _main(EventLoop::with_user_event().build().unwrap());
 }
 
-fn _main(event_loop: EventLoop<EventLoopMessage>) {
+fn _main(event_loop: EventLoop<WinitEventLoopMessage>) {
     println!("[Std Stream] Joined the real main");
     eprintln!("[Err Stream] Joined the real main");
     log::info!("[Log Info] Joined the real main");
@@ -20,10 +21,24 @@ fn _main(event_loop: EventLoop<EventLoopMessage>) {
 
     log::info!("Got the window");
 
-    match WindowManager::new(&event_loop) {
-        Ok(am) => {
-            log::info!("Got the main application");
-            am.run_loop(event_loop, InitState::new(Box::new(MenuState::new())));
+    // let elp = event_loop.create_proxy();
+    // match WindowManager::new(elp) {
+    //     Ok(am) => {
+    //         log::info!("Got the main application");
+    //         am.run_loop(event_loop, InitState::new(Box::new(MenuState::new())));
+    //         STATIC_DATA.cfg_data.write().unwrap().check_save();
+    //     }
+    //     Err(e) => {
+    //         log::error!("Init the app manager failed for {:?}", e);
+    //         eprintln!("Init the app manager failed for {:?}", e);
+    //     }
+    // }
+
+    let start = InitState::new(Box::new(MenuState::new()));
+    match AsyncWindowManager::new(&event_loop, start) {
+        Ok(awm) => {
+            log::info!("Got the async window manager.");
+            awm.run_loop(event_loop);
             STATIC_DATA.cfg_data.write().unwrap().check_save();
         }
         Err(e) => {
@@ -33,13 +48,12 @@ fn _main(event_loop: EventLoop<EventLoopMessage>) {
     }
 }
 
-
 #[no_mangle]
 #[cfg(feature = "android")]
 #[cfg(target_os = "android")]
 pub fn android_main(app: android_activity::AndroidApp) {
-    use winit::platform::android::EventLoopBuilderExtAndroid;
     use winit::event_loop::EventLoopBuilder;
+    use winit::platform::android::EventLoopBuilderExtAndroid;
 
     std::env::set_var("RUST_BACKTRACE", "full");
 

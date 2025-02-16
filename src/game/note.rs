@@ -30,6 +30,7 @@ pub struct LongNote {
 pub trait Note {
     fn get_x(&self) -> f32;
 
+    /// The full width. so note in the screen is [x - width / 2, x + width / 2]
     fn get_width(&self) -> f32;
     
     // Get the start time
