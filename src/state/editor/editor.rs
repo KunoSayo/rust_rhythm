@@ -9,10 +9,7 @@ use crate::state::editor::note_editor::BeatmapEditorData;
 use anyhow::anyhow;
 use egui::epaint::PathStroke;
 use egui::panel::TopBottomSide;
-use egui::{
-    Align, Button, Color32, Context, Frame, Layout, NumExt, Pos2, Rect, Sense, Stroke, TextEdit,
-    TextStyle, UiBuilder, Vec2,
-};
+use egui::{Align, Button, Color32, Context, Frame, Layout, NumExt, Pos2, Rect, Sense, Stroke, TextEdit, TextStyle, Ui, UiBuilder, Vec2};
 use rodio::{Decoder, OutputStreamHandle, Sink, Source};
 use std::io::{Cursor, Read};
 use std::ops::{Add, ControlFlow, Deref, Mul};
@@ -58,6 +55,7 @@ pub(in crate::state::editor) struct InputCache {
     pub(in crate::state::editor) select_timing_group: usize,
     pub(in crate::state::editor) select_timing_row: Option<usize>,
     pub(in crate::state::editor) edit_data: BeatmapEditorData,
+    pub(in crate::state::editor) note_width: f32
 }
 
 impl Default for InputCache {
@@ -70,6 +68,7 @@ impl Default for InputCache {
             select_timing_group: 0,
             select_timing_row: None,
             edit_data: Default::default(),
+            note_width: 0.25,
         }
     }
 }
@@ -330,7 +329,6 @@ impl BeatMapEditor {
                         Pos2::new(start_point.x + width, start_point.y + ui_height),
                     ));
                     ui.allocate_new_ui(ui_builder, |ui| {
-                        dbg!(ui.available_rect_before_wrap());
                         // [-, +]
                         let detail_dest = [
                             [1, 1],
@@ -632,31 +630,7 @@ impl BeatMapEditor {
                                     .expect("Failed to seek");
                             }
                         } else if response.contains_pointer() {
-                            ui.input(|input| {
-                                if input.raw_scroll_delta.y == 0.0 {
-                                    return;
-                                }
-                                let (left, _, right) = self.beatmap.timing_group.get_near_beat(
-                                    self.input_cache.select_timing_group,
-                                    self.input_cache.current_duration.as_millis() as OffsetType,
-                                    self.input_cache.detail,
-                                );
-                                let dest_time = if input.raw_scroll_delta.y < 0.0 {
-                                    // go right
-                                    right.time
-                                } else {
-                                    // go left
-                                    left.time
-                                }
-                                .clamp(0, self.total_duration.as_millis() as OffsetType);
-
-                                self.sink
-                                    .try_seek(
-                                        Duration::from_millis(dest_time as u64)
-                                            .mul((1.0 / self.sink.speed()) as u32),
-                                    )
-                                    .expect("Failed to seek");
-                            });
+                            self.scroll_beat(ui);
                         }
                     },
                 );
@@ -724,6 +698,34 @@ impl BeatMapEditor {
         } else {
             self.sink.pause();
         }
+    }
+
+    pub fn scroll_beat(&self, ui: &mut Ui) {
+        ui.input(|input| {
+            if input.raw_scroll_delta.y == 0.0 {
+                return;
+            }
+            let (left, _, right) = self.beatmap.timing_group.get_near_beat(
+                self.input_cache.select_timing_group,
+                self.input_cache.current_duration.as_millis() as OffsetType,
+                self.input_cache.detail,
+            );
+            let dest_time = if input.raw_scroll_delta.y < 0.0 {
+                // go right
+                right.time
+            } else {
+                // go left
+                left.time
+            }
+                .clamp(0, self.total_duration.as_millis() as OffsetType);
+
+            self.sink
+                .try_seek(
+                    Duration::from_millis(dest_time as u64)
+                        .mul((1.0 / self.sink.speed()) as u32),
+                )
+                .expect("Failed to seek");
+        });
     }
 }
 

@@ -1,11 +1,12 @@
 use crate::engine::StateData;
 use crate::game::beatmap::MapRule;
+use crate::game::note::consts::NOTE_HEIGHT_PIXEL;
 use crate::game::OffsetType;
 use crate::state::editor::editor::BeatMapEditor;
 use crate::state::editor::util::map_point_to_std_pos_in_rect;
 use egui::epaint::PathStroke;
 use egui::panel::Side;
-use egui::{Color32, Frame, Pos2, Rect, Stroke, Vec2};
+use egui::{Color32, Frame, Pos2, Rect, Stroke, StrokeKind, Ui, Vec2};
 use num::Signed;
 
 #[derive(Default)]
@@ -58,8 +59,35 @@ where
 }
 
 impl BeatMapEditor {
+    #[inline]
+    #[must_use]
+    fn time_map_y(&self, time: f32) -> f32 {
+        (time - self.input_cache.current_duration.as_secs_f32())
+            / self.input_cache.progress_half_time
+    }
+    #[inline]
+    #[must_use]
+    fn time_map_ui_y(&self, time: f32, rect: &Rect) -> f32 {
+        rect.center().y - self.time_map_y(time) * rect.height() * 0.5
+    }
+
+    #[inline]
+    #[must_use]
+    fn game_x_map_ui_x(x: f32, rect: &Rect) -> f32 {
+        rect.center().x + x * rect.width() * 0.5
+    }
+
+    #[inline]
+    #[must_use]
+    fn get_place_note_width(&self) -> f32 {
+        match self.beatmap.rule {
+            MapRule::Falling => self.input_cache.note_width,
+            MapRule::FourKey => 0.25,
+        }
+    }
+
     /// Return the (x, time)
-    fn get_note_pos_for_cursor(&self, s: &mut StateData, game_rect: Rect) -> (f32, OffsetType) {
+    fn get_note_pos_for_cursor(&self, s: &mut StateData, game_rect: &Rect) -> (f32, OffsetType) {
         let mouse_pos = s.app.inputs.mouse_state.pos;
 
         let (mut x, y) =
@@ -82,9 +110,37 @@ impl BeatMapEditor {
             self.input_cache.detail,
         );
         let mut result_time = select_time;
-        if now.is_some() {}
+        if let Some(now) = now {
+            result_time = now.time;
+        } else {
+            result_time = get_nearest_result(result_time, &[left.time, right.time], None);
+        }
 
         (x, result_time)
+    }
+
+    fn render_game_viewport(&mut self, s: &mut StateData, ui: &mut Ui, game_rect: &Rect) {
+        let pos = s.app.inputs.mouse_state.pos;
+        if game_rect.contains([pos.x, pos.y].into()) {
+            self.scroll_beat(ui);
+            let place_note_pos = self.get_note_pos_for_cursor(s, game_rect);
+            let note_center_ui_y = self.time_map_ui_y(place_note_pos.1 as f32 / 1000.0, game_rect);
+            let note_width = self.get_place_note_width();
+            let note_ui_left_x =
+                Self::game_x_map_ui_x(place_note_pos.0 - note_width * 0.5, game_rect);
+            let note_ui_right_x =
+                Self::game_x_map_ui_x(place_note_pos.0 + note_width * 0.5, game_rect);
+            let note_rect = Rect::from_min_max(
+                Pos2::new(note_ui_left_x, note_center_ui_y - NOTE_HEIGHT_PIXEL * 0.5),
+                Pos2::new(note_ui_right_x, note_center_ui_y + NOTE_HEIGHT_PIXEL * 0.5),
+            );
+            ui.painter().rect_stroke(
+                note_rect,
+                0.0,
+                Stroke::new(1.0, Color32::YELLOW),
+                StrokeKind::Outside,
+            );
+        }
     }
 
     pub fn render_note_editor(&mut self, s: &mut StateData, ctx: &egui::Context) {
@@ -97,7 +153,6 @@ impl BeatMapEditor {
                 ui.vertical(|ui| {});
             });
 
-        let current_time = self.input_cache.current_duration.as_secs_f32();
         egui::CentralPanel::default()
             .frame(Frame::NONE)
             .show(ctx, |ui| {
@@ -121,11 +176,6 @@ impl BeatMapEditor {
                     max: center_point + Vec2::new(half_x, half_y),
                 };
 
-                let time_map_y =
-                    |time: f32| (time - current_time) / self.input_cache.progress_half_time;
-
-                let time_map_ui_y =
-                    |time: f32| rect.center().y - time_map_y(time) * rect.height() * 0.5;
                 {
                     let rect = rect.expand(1.0);
                     let points = vec![
@@ -160,7 +210,7 @@ impl BeatMapEditor {
                     if x.time < 0 {
                         continue;
                     }
-                    let time_y = time_map_ui_y(x.time as f32 / 1000.0);
+                    let time_y = self.time_map_ui_y(x.time as f32 / 1000.0, &rect);
                     let color = x.get_color();
                     if x.is_measure {
                         ui.painter().hline(
@@ -182,6 +232,8 @@ impl BeatMapEditor {
                     rect.center().y,
                     Stroke::new(5.0, Color32::WHITE),
                 );
+
+                self.render_game_viewport(s, ui, &rect);
             });
     }
 }

@@ -13,10 +13,8 @@ pub struct SongListUi {
     beatmap_select: Cell<usize>,
 }
 
-
 const SONG_BAR_HEIGHT: f32 = 200.0;
 const BEATMAP_BAR_HEIGHT: f32 = 100.0;
-
 
 pub struct EnterResult {
     pub song: Arc<SongInfo>,
@@ -31,6 +29,7 @@ pub struct SongListUiResponse {
 impl SongListUi {
     pub fn update_songs(&mut self, songs: Vec<Arc<SongInfo>>) {
         self.songs = songs;
+        self.songs.sort_by(|x, y| x.title.cmp(&y.title));
     }
 
     pub fn songs(&self) -> &Vec<Arc<SongInfo>> {
@@ -41,23 +40,22 @@ impl SongListUi {
         let mut result = None;
         let beatmap = &self.songs[song_idx].maps[idx];
 
-
         #[cfg(debug_assertions)]
         let old_y = ui.next_widget_position().y;
 
-        let button = Button::new(beatmap.song_beatmap_file.get_show_name())
-            .fill(if self.beatmap_select.get() == idx {
+        let button = Button::new(beatmap.song_beatmap_file.get_show_name()).fill(
+            if self.beatmap_select.get() == idx {
                 Color32::BLUE
             } else {
                 Color32::DARK_BLUE
-            });
+            },
+        );
 
         let song_width = if self.beatmap_select.get() == idx {
             250.0
         } else {
             150.0
         };
-
 
         let response = ui.add_sized(Vec2::new(song_width, 97.0), button);
         #[cfg(debug_assertions)]
@@ -103,7 +101,6 @@ impl SongListUi {
         };
 
         let response = ui.add_sized(Vec2::new(song_width, 197.0), button);
-
 
         #[cfg(debug_assertions)]
         {
@@ -159,7 +156,6 @@ impl SongListUi {
                 }
 
                 let first_display_y = (scrolled - height).at_least(0.0);
-
 
                 for idx in 0..self.songs.len() {
                     // render song bar

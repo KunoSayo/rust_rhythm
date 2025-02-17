@@ -1,6 +1,9 @@
 use crate::game::OffsetType;
 use serde::{Deserialize, Serialize};
 
+pub mod consts {
+    pub const NOTE_HEIGHT_PIXEL: f32 = 32.0;
+}
 #[derive(Serialize, Deserialize, Ord, PartialOrd, PartialEq, Clone, Copy, Debug, Eq, Hash)]
 pub enum NoteHitType {
     /// Click type
