@@ -14,7 +14,8 @@ pub struct NormalNote {
     pub width: f32,
     pub time: OffsetType,
     pub note_type: NoteHitType,
-
+    #[serde(default)]
+    pub timing_group: u8,
 }
 
 #[derive(Serialize, Deserialize, PartialOrd, PartialEq, Clone, Copy, Debug)]
@@ -23,8 +24,8 @@ pub struct LongNote {
     pub width: f32,
     pub start_time: OffsetType,
     pub end_time: OffsetType,
-    pub note_type: NoteHitType,
-
+    #[serde(default)]
+    pub timing_group: u8,
 }
 
 pub trait Note {
@@ -32,11 +33,13 @@ pub trait Note {
 
     /// The full width. so note in the screen is [x - width / 2, x + width / 2]
     fn get_width(&self) -> f32;
-    
+
     // Get the start time
     fn get_time(&self) -> OffsetType;
 
     fn get_note_type(&self) -> NoteHitType;
+
+    fn get_timing_group(&self) -> u8;
 }
 
 impl Note for NormalNote {
@@ -55,6 +58,10 @@ impl Note for NormalNote {
     fn get_note_type(&self) -> NoteHitType {
         self.note_type
     }
+
+    fn get_timing_group(&self) -> u8 {
+        self.timing_group
+    }
 }
 
 impl Note for LongNote {
@@ -71,6 +78,10 @@ impl Note for LongNote {
     }
 
     fn get_note_type(&self) -> NoteHitType {
-        self.note_type
+        NoteHitType::Click
+    }
+
+    fn get_timing_group(&self) -> u8 {
+        self.timing_group
     }
 }

@@ -396,7 +396,7 @@ impl WindowInstance {
         }
         match we {
             WindowEvent::Touch(touch) => {
-                self.loop_info.mouse_input.pos = touch.location;
+                self.loop_info.mouse_input.pos = (touch.location.x as f32, touch.location.y as f32).into();
                 match touch.phase {
                     TouchPhase::Started => {
                         self.loop_info.mouse_input.left_click = true;
@@ -420,7 +420,7 @@ impl WindowInstance {
                 device_id,
                 position,
             } => {
-                self.loop_info.mouse_input.pos = *position;
+                self.loop_info.mouse_input.pos = (position.x as f32, position.y as f32).into();
             }
             WindowEvent::CursorLeft { .. } => {
                 self.loop_info.mouse_input.pos = (-9961.0, -9961.0).into();
@@ -1032,7 +1032,7 @@ impl AsyncWindowManagerInner {
         }
     }
 
-    async fn run_loop_task<T: Send + Sync + 'static>(
+    async fn run_loop_task<T: Send + 'static>(
         &self,
         f: Box<dyn FnOnce(&ActiveEventLoop) -> T + Send>,
     ) -> T {
@@ -1085,18 +1085,18 @@ impl EngineEventLoopProxy for &AsyncWindowManagerInner {
 pub trait EngineEventLoopProxyExt<'a, T> {
     fn run_loop_task_with_result(
         &'a self,
-        f: Box<dyn FnOnce(&ActiveEventLoop) -> T + Send + Sync + 'a>,
+        f: Box<dyn FnOnce(&ActiveEventLoop) -> T + Send + 'a>,
     ) -> T;
 }
 
-impl<'a, T: EngineEventLoopProxy, R: Send + Sync + 'static> EngineEventLoopProxyExt<'a, R> for T {
+impl<'a, T: EngineEventLoopProxy, R: Send + 'static> EngineEventLoopProxyExt<'a, R> for T {
     fn run_loop_task_with_result(
         &'a self,
-        f: Box<dyn FnOnce(&ActiveEventLoop) -> R + Send + Sync + 'a>,
+        f: Box<dyn FnOnce(&ActiveEventLoop) -> R + Send + 'a>,
     ) -> R {
         // SAFETY: we await the result.
         let f = unsafe {
-            std::mem::transmute::<_, Box<dyn FnOnce(&ActiveEventLoop) -> R + Send + Sync + 'static>>(
+            std::mem::transmute::<_, Box<dyn FnOnce(&ActiveEventLoop) -> R + Send + 'static>>(
                 f,
             )
         };
@@ -1107,7 +1107,7 @@ impl<'a, T: EngineEventLoopProxy, R: Send + Sync + 'static> EngineEventLoopProxy
             tx.send(result);
         };
 
-        let box_task: Box<dyn FnOnce(&ActiveEventLoop) + Send + Sync> = Box::new(task);
+        let box_task: Box<dyn FnOnce(&ActiveEventLoop) + Send> = Box::new(task);
 
         self.run_loop_task(box_task);
         block_on(rx).unwrap()

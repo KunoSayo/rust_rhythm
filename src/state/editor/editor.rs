@@ -52,6 +52,7 @@ pub struct BeatMapEditor {
 
 pub(in crate::state::editor) struct InputCache {
     pub(in crate::state::editor) escape_time: f32,
+    pub(in crate::state::editor) detail: u8,
     pub(in crate::state::editor) current_duration: Duration,
     pub(in crate::state::editor) progress_half_time: f32,
     pub(in crate::state::editor) select_timing_group: usize,
@@ -63,8 +64,9 @@ impl Default for InputCache {
     fn default() -> Self {
         Self {
             escape_time: 0.0,
+            detail: 1,
             current_duration: Default::default(),
-            progress_half_time: 1.0,
+            progress_half_time: 0.5,
             select_timing_group: 0,
             select_timing_row: None,
             edit_data: Default::default(),
@@ -256,6 +258,7 @@ impl BeatMapEditor {
         self.beatmap.timing_group.get_beat_iterator(
             self.input_cache.select_timing_group,
             (secs * 1000.0) as OffsetType,
+            self.input_cache.detail
         )
     }
 
@@ -433,6 +436,7 @@ impl BeatMapEditor {
                     .get_beat_iterator(
                         self.input_cache.select_timing_group,
                         secs_to_offset_type(left_time),
+                        self.input_cache.detail
                     )
                     .filter(|x| x.number >= 0)
                     .try_for_each(|beat| {
@@ -581,6 +585,7 @@ impl BeatMapEditor {
                                 let (left, _, right) = self.beatmap.timing_group.get_near_beat(
                                     self.input_cache.select_timing_group,
                                     self.input_cache.current_duration.as_millis() as OffsetType,
+                                    self.input_cache.detail
                                 );
                                 let dest_time = if input.raw_scroll_delta.y < 0.0 {
                                     // go right

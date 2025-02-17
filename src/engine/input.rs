@@ -32,7 +32,7 @@ pub struct RawInputData {
 
 #[derive(Default, Copy, Clone)]
 pub struct MouseState {
-    pub pos: PhysicalPosition<f64>,
+    pub pos: PhysicalPosition<f32>,
     pub left_click: bool,
     pub last_left_click: bool,
 }
