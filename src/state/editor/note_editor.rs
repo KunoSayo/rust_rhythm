@@ -32,7 +32,7 @@ where
     T: std::ops::Sub<Output = T> + Signed + Copy + PartialOrd,
 {
     let mut min_dif = None;
-    let mut result = None;
+    let mut result = cur;
     for x in ways {
         let cd = (*x - cur).abs();
         if let Some(t) = tolerance {
@@ -44,17 +44,17 @@ where
             Some(md) => {
                 if cd < md {
                     min_dif = Some(cd);
-                    result = Some(*x)
+                    result = *x
                 }
             }
             _ => {
                 min_dif = Some(cd);
-                result = Some(*x);
+                result = *x;
             }
         }
     }
 
-    result.unwrap_or(cur)
+    result
 }
 
 impl BeatMapEditor {

@@ -148,7 +148,8 @@ impl GameState for BeatMapEditor {
         let mut tran = Trans::None;
         self.input_cache.current_duration = self.get_progress();
 
-        let mut loop_state = LoopState::WAIT;
+        let mut loop_state = LoopState::wait_until(Duration::from_secs_f32(31.0 / 30.0), 0.001);
+
 
         if self.input_cache.current_duration >= self.total_duration {
             self.sink.pause();

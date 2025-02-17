@@ -20,7 +20,8 @@ use std::thread::JoinHandle;
 use std::time::Instant;
 use wgpu::{
     Color, CommandEncoderDescriptor, Extent3d, ImageCopyTexture, LoadOp, Maintain, Operations,
-    Origin3d, RenderPassColorAttachment, RenderPassDescriptor, StoreOp, TextureAspect,
+    Origin3d, RenderPassColorAttachment, RenderPassDescriptor, StoreOp, TexelCopyTextureInfo,
+    TextureAspect,
 };
 use winit::application::ApplicationHandler;
 use winit::dpi::{PhysicalSize, Size};
@@ -202,7 +203,7 @@ impl WindowInstance {
     fn render_once(&mut self, el: &mut GlobalData) {
         if let (Some(gpu),) = (&self.app.gpu,) {
             profiling::scope!("Render once");
-            let render_now = std::time::Instant::now();
+            let render_now = Instant::now();
             let render_dur = render_now.duration_since(self.app.last_render_time);
             let dt = render_dur.as_secs_f32();
             self.loop_info.loop_state.reset(dt);
@@ -339,13 +340,13 @@ impl WindowInstance {
 
                 let surface_output = &swap_chain_frame;
                 encoder.copy_texture_to_texture(
-                    ImageCopyTexture {
+                    TexelCopyTextureInfo {
                         texture: &gpu.views.get_screen().texture,
                         mip_level: 0,
                         origin: Origin3d::default(),
                         aspect: TextureAspect::All,
                     },
-                    ImageCopyTexture {
+                    TexelCopyTextureInfo {
                         texture: &surface_output.texture,
                         mip_level: 0,
                         origin: Default::default(),
@@ -396,7 +397,8 @@ impl WindowInstance {
         }
         match we {
             WindowEvent::Touch(touch) => {
-                self.loop_info.mouse_input.pos = (touch.location.x as f32, touch.location.y as f32).into();
+                self.loop_info.mouse_input.pos =
+                    (touch.location.x as f32, touch.location.y as f32).into();
                 match touch.phase {
                     TouchPhase::Started => {
                         self.loop_info.mouse_input.left_click = true;
@@ -564,7 +566,7 @@ impl WindowManager {
     fn on_new_events(&mut self, el: impl EngineEventLoopProxy, cause: StartCause) {
         profiling::finish_frame!();
         self.all_events = 0;
-        if cause == StartCause::Poll {
+        if !matches!(cause, StartCause::WaitCancelled { .. }) {
             self.all_events = 1;
         }
         self.draw_events = 0;
@@ -989,13 +991,34 @@ impl AsyncWindowManagerInner {
                 }
                 ControlFlow::WaitUntil(t) => {
                     let start = Instant::now();
-                    if let Ok(msg) = self.recv.recv_timeout(t.duration_since(start)) {
-                        s_msg = Some(msg);
+                    if t > start {
+                        if let Ok(msg) = self.recv.recv_timeout(t.duration_since(start)) {
+                            s_msg = Some(msg);
+                            StartCause::WaitCancelled {
+                                start,
+                                requested_resume: Some(Instant::now()),
+                            }
+                        } else {
+                            StartCause::ResumeTimeReached {
+                                start,
+                                requested_resume: Instant::now(),
+                            }
+                        }
+                    } else {
+                        if let Ok(msg) = self.recv.try_recv() {
+                            s_msg = Some(msg);
+                            StartCause::WaitCancelled {
+                                start,
+                                requested_resume: Some(Instant::now()),
+                            }
+                        } else {
+                            StartCause::ResumeTimeReached {
+                                start,
+                                requested_resume: Instant::now(),
+                            }
+                        }
                     }
-                    StartCause::ResumeTimeReached {
-                        start,
-                        requested_resume: Instant::now(),
-                    }
+                    
                 }
             };
 
@@ -1096,9 +1119,7 @@ impl<'a, T: EngineEventLoopProxy, R: Send + 'static> EngineEventLoopProxyExt<'a,
     ) -> R {
         // SAFETY: we await the result.
         let f = unsafe {
-            std::mem::transmute::<_, Box<dyn FnOnce(&ActiveEventLoop) -> R + Send + 'static>>(
-                f,
-            )
+            std::mem::transmute::<_, Box<dyn FnOnce(&ActiveEventLoop) -> R + Send + 'static>>(f)
         };
 
         let (tx, rx) = futures::channel::oneshot::channel();
