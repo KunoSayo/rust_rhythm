@@ -2,6 +2,7 @@ use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 
 use anyhow::anyhow;
+use egui::Rect;
 use futures::executor::block_on;
 use wgpu::*;
 use winit::window::Window;
@@ -100,6 +101,78 @@ impl WgpuData {
     }
 
     pub fn new(window: &Window, el: &impl EngineEventLoopProxy) -> anyhow::Result<Self> {
+        el.run_loop_task_with_result(Box::new(|_| {
+            log::info!("New graphics state");
+            let size = window.inner_size();
+            log::info!("Got window inner size {:?}", size);
+
+            log::info!("Got wgpu  instance {:?}", INSTANCE);
+            log::info!("Window is visible, try surface.");
+
+            let surface = unsafe {
+                INSTANCE
+                    .create_surface(std::mem::transmute::<_, &'static Window>(window))
+                    .map_err(|e| anyhow!("Create surface failed for {e:?}"))
+            }?;
+
+            log::info!("Created surface {:?}", surface);
+            let adapter = block_on(INSTANCE.request_adapter(&RequestAdapterOptions {
+                power_preference:
+                    PowerPreference::from_env().unwrap_or(PowerPreference::HighPerformance),
+                force_fallback_adapter: false,
+                compatible_surface: Some(&surface),
+            }))
+            .ok_or(anyhow!("Cannot get adapter"))?;
+            log::info!("Got adapter {:?}", adapter);
+            let (device, queue) = block_on(adapter.request_device(
+                &DeviceDescriptor {
+                    label: None,
+                    required_features: Features::default(),
+                    required_limits: Limits::default(),
+                    memory_hints: Default::default(),
+                },
+                None,
+            ))?;
+
+            let (device, queue) = (Arc::new(device), Arc::new(queue));
+            log::info!("Requested device {:?} and queue {:?}", device, queue);
+
+            let format = TextureFormat::Bgra8Unorm;
+            log::info!("Using {:?} for swap chain format", format);
+
+            let surface_cfg = SurfaceConfiguration {
+                usage: TextureUsages::COPY_DST,
+                format,
+                width: size.width,
+                height: size.height,
+                present_mode: PresentMode::Fifo,
+                desired_maximum_frame_latency: 0,
+                alpha_mode: Default::default(),
+                view_formats: vec![format],
+            };
+            surface.configure(&device, &surface_cfg);
+
+            let uniforms = MainUniformBuffer::new(&device);
+            let size_scale = [
+                surface_cfg.width as f32 / 1600.0,
+                surface_cfg.height as f32 / 900.0,
+            ];
+            let views = MainRenderViews::new(&device, &surface_cfg);
+            let data = StaticRendererData::new(&device);
+            Ok(Self {
+                surface,
+                surface_cfg,
+                device,
+                queue,
+                views,
+                uniforms,
+                data,
+                size_scale,
+            })
+        }))
+    }
+
+    pub fn new_async(window: &Window, el: &impl EngineEventLoopProxy) -> anyhow::Result<Self> {
         log::info!("New graphics state");
         let size = window.inner_size();
         log::info!("Got window inner size {:?}", size);
@@ -115,7 +188,8 @@ impl WgpuData {
 
         log::info!("Created surface {:?}", surface);
         let adapter = block_on(INSTANCE.request_adapter(&RequestAdapterOptions {
-            power_preference: PowerPreference::from_env().unwrap_or(PowerPreference::HighPerformance),
+            power_preference:
+                PowerPreference::from_env().unwrap_or(PowerPreference::HighPerformance),
             force_fallback_adapter: false,
             compatible_surface: Some(&surface),
         }))
@@ -124,7 +198,7 @@ impl WgpuData {
         let (device, queue) = block_on(adapter.request_device(
             &DeviceDescriptor {
                 label: None,
-                required_features: adapter.features(),
+                required_features: Features::default(),
                 required_limits: Limits::default(),
                 memory_hints: Default::default(),
             },

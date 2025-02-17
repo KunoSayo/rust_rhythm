@@ -10,6 +10,7 @@ use futures::task::SpawnExt;
 use log::error;
 use once_cell::sync::Lazy;
 use wgpu::{Device, Queue, ShaderModule};
+use crate::game::render::NoteRenderer;
 
 pub struct InitState {
     start_state: Option<Box<dyn GameState + Send + 'static>>,
@@ -62,6 +63,11 @@ impl GameState for InitState {
                     WaitResult::Function(Box::new(|s| {
                         s.app.egui_ctx.set_fonts(STATIC_DATA.font.clone());
                         s.wd.world.insert(Arc::new(song_manager));
+                        let gpu = s.app.gpu.as_ref().unwrap();
+                        let tr = s.app.world.get_mut::<TextureRenderer>()
+                            .unwrap();
+                        let nr = NoteRenderer::new(&s.app.gpu.as_ref().unwrap().device, &tr, &s.app.res);
+                        s.app.world.insert(nr);
                         Trans::Switch(state)
                     }))
                 }

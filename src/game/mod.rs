@@ -11,7 +11,7 @@ pub mod note;
 pub mod song;
 pub mod beatmap;
 pub mod timing;
-mod render;
+pub mod render;
 
 pub fn secs_to_offset_type(sec: f32) -> OffsetType {
     (sec * 1000.0).round() as OffsetType

@@ -326,7 +326,7 @@ impl WindowInstance {
                 s
             } else {
                 // it is normal.
-                log::warn!("Lose swap chain frame!");
+                log::trace!("Lose swap chain frame!");
                 return;
             };
 
@@ -740,6 +740,50 @@ impl WindowManager {
                 }
             }
             WindowEvent::RedrawRequested => {
+                // re create wgpu if not found
+                if let Some(this) = self.windows.get(&window_id) {
+                    let mut this = this.borrow_mut();
+                    if this.app.gpu.is_none() {
+                        info!("gpu not found when redraw requested, try to init");
+                        this.app.gpu = match WgpuData::new(&this.app.window, &event_loop) {
+                            Ok(gpu) => Some(gpu),
+                            Err(err) => {
+                                log::error!(
+                                    "Failed to create wgpu data when on request redraw for {:?}",
+                                    err
+                                );
+                                None
+                            }
+                        };
+                        if let Some(gpu) = &this.app.gpu {
+                            this.app.render = Some(MainRendererData::new(gpu, &this.app.res));
+                            let mut gd = GlobalData {
+                                el: &event_loop,
+                                elp: &self.proxy,
+                                windows: &self.windows,
+                                new_windows: &mut created_windows,
+                                world: &mut self.world,
+                            };
+                            let WindowInstance {
+                                ref mut app,
+                                ref mut states,
+                                ..
+                            } = this.deref_mut().deref_mut();
+                            let sd = &mut get_state!(*app, &mut gd);
+                            states
+                                .iter_mut()
+                                .for_each(|x| x.on_event(sd, StateEvent::ReloadGPU));
+                        }
+
+                        // this.app.egui_ctx = Context::default();
+                        let size = this.app.window.inner_size();
+                        // this.app.egui_ctx.set_pixels_per_point(this.app.window.scale_factor() as f32);
+                        let WindowInstance { ref mut app, .. } = this.deref_mut().deref_mut();
+                        let _ = app
+                            .egui
+                            .on_window_event(&app.window, &WindowEvent::Resized(size));
+                    }
+                }
                 self.draw_events += 1;
                 let mut not_running = vec![];
 
@@ -1018,7 +1062,6 @@ impl AsyncWindowManagerInner {
                             }
                         }
                     }
-                    
                 }
             };
 

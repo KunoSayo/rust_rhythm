@@ -16,7 +16,7 @@ struct VertexOut {
 }
 
 @vertex
-fn vs(input: VertexIn) -> VertexOut {
+fn vs(input: VertexIn, @builtin(vertex_index) idx: u32) -> VertexOut {
     var out: VertexOut;
 
     out.tex_coords = input.tex_coords;
@@ -32,7 +32,7 @@ struct FragUni {
 
 @group(1) @binding(0)
 var t_diffuse: texture_2d<f32>;
-@group(1) @binding(1)
+@group(2) @binding(0)
 var<uniform> frag_uni: FragUni;
 
 @fragment
@@ -41,5 +41,6 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
     let object_color: vec4<f32> = textureSample(t_diffuse, s_diffuse, in.tex_coords);
     let result = object_color * frag_uni.tint;
 
+//    return vec4<f32>(1.0, 0.0, 0.0, 1.0);
     return result;
 }

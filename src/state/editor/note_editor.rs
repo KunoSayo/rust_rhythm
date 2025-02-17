@@ -1,6 +1,8 @@
+use crate::engine::renderer::texture_renderer::TextureRenderer;
 use crate::engine::StateData;
 use crate::game::beatmap::MapRule;
 use crate::game::note::consts::NOTE_HEIGHT_PIXEL;
+use crate::game::render::NoteRenderer;
 use crate::game::OffsetType;
 use crate::state::editor::editor::BeatMapEditor;
 use crate::state::editor::util::map_point_to_std_pos_in_rect;
@@ -8,6 +10,7 @@ use egui::epaint::PathStroke;
 use egui::panel::Side;
 use egui::{Color32, Frame, Pos2, Rect, Stroke, StrokeKind, Ui, Vec2};
 use num::Signed;
+use crate::game::note::{NormalNote, NoteHitType};
 
 #[derive(Default)]
 enum PointerType {
@@ -119,28 +122,49 @@ impl BeatMapEditor {
         (x, result_time)
     }
 
+    fn normal_note_pointer_update(&mut self, s: &mut StateData, ui: &mut Ui, game_rect: &Rect) {
+        let place_note_pos = self.get_note_pos_for_cursor(s, game_rect);
+        let note_center_y = self.time_map_y(place_note_pos.1 as f32 / 1000.0);
+        let note_center_ui_y = self.time_map_ui_y(place_note_pos.1 as f32 / 1000.0, game_rect);
+        let note_width = self.get_place_note_width();
+        let note_ui_left_x = Self::game_x_map_ui_x(place_note_pos.0 - note_width * 0.5, game_rect);
+        let note_ui_right_x = Self::game_x_map_ui_x(place_note_pos.0 + note_width * 0.5, game_rect);
+        let note_rect = Rect::from_min_max(
+            Pos2::new(note_ui_left_x, note_center_ui_y - NOTE_HEIGHT_PIXEL * 0.5),
+            Pos2::new(note_ui_right_x, note_center_ui_y + NOTE_HEIGHT_PIXEL * 0.5),
+        );
+        ui.painter().rect_stroke(
+            note_rect,
+            0.0,
+            Stroke::new(1.0, Color32::YELLOW),
+            StrokeKind::Outside,
+        );
+
+        let note = NormalNote {
+            x: place_note_pos.0,
+            width: note_width,
+            time: place_note_pos.1,
+            note_type: NoteHitType::Click,
+            timing_group: 0,
+        };
+        let nr = s.app.world.get_mut::<NoteRenderer>().unwrap();
+        nr.normal_note.get_note_render_obj((game_rect.width(), game_rect.height()), note_center_y, &note, |obj| {
+            nr.background_objs.push(obj)
+        });
+    }
+
     fn render_game_viewport(&mut self, s: &mut StateData, ui: &mut Ui, game_rect: &Rect) {
         let pos = s.app.inputs.mouse_state.pos;
         if game_rect.contains([pos.x, pos.y].into()) {
             self.scroll_beat(ui);
-            let place_note_pos = self.get_note_pos_for_cursor(s, game_rect);
-            let note_center_ui_y = self.time_map_ui_y(place_note_pos.1 as f32 / 1000.0, game_rect);
-            let note_width = self.get_place_note_width();
-            let note_ui_left_x =
-                Self::game_x_map_ui_x(place_note_pos.0 - note_width * 0.5, game_rect);
-            let note_ui_right_x =
-                Self::game_x_map_ui_x(place_note_pos.0 + note_width * 0.5, game_rect);
-            let note_rect = Rect::from_min_max(
-                Pos2::new(note_ui_left_x, note_center_ui_y - NOTE_HEIGHT_PIXEL * 0.5),
-                Pos2::new(note_ui_right_x, note_center_ui_y + NOTE_HEIGHT_PIXEL * 0.5),
-            );
-            ui.painter().rect_stroke(
-                note_rect,
-                0.0,
-                Stroke::new(1.0, Color32::YELLOW),
-                StrokeKind::Outside,
-            );
+
+            self.normal_note_pointer_update(s, ui, game_rect);
         }
+
+        let tr = s.app.world.fetch::<TextureRenderer>();
+        let mut nr = s.app.world.fetch_mut::<NoteRenderer>();
+
+        nr.render(s.app.gpu.as_ref().unwrap(), s.app.render.as_mut().unwrap(), &tr, &game_rect);
     }
 
     pub fn render_note_editor(&mut self, s: &mut StateData, ctx: &egui::Context) {
@@ -230,7 +254,7 @@ impl BeatMapEditor {
                 ui.painter().hline(
                     rect.left()..=rect.right(),
                     rect.center().y,
-                    Stroke::new(5.0, Color32::WHITE),
+                    Stroke::new(5.0, Color32::from_rgba_unmultiplied(255, 255, 255, 127)),
                 );
 
                 self.render_game_viewport(s, ui, &rect);

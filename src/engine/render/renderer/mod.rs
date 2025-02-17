@@ -15,6 +15,7 @@ pub trait Renderer<Obj>: Send + 'static {
 #[derive(Debug, Clone)]
 pub struct StaticRendererData {
     pub nearest_sampler: Arc<Sampler>,
+    /// 0 1 2 1 2 3 4 5 6 5 6 7
     pub rect_index_buffer: Arc<Buffer>,
 }
 
