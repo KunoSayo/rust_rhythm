@@ -150,7 +150,6 @@ impl GameState for BeatMapEditor {
 
         let mut loop_state = LoopState::wait_until(Duration::from_secs_f32(31.0 / 30.0), 0.001);
 
-
         if self.input_cache.current_duration >= self.total_duration {
             self.sink.pause();
         }
@@ -259,7 +258,7 @@ impl BeatMapEditor {
         self.beatmap.timing_group.get_beat_iterator(
             self.input_cache.select_timing_group,
             (secs * 1000.0) as OffsetType,
-            self.input_cache.detail
+            self.input_cache.detail,
         )
     }
 
@@ -317,15 +316,68 @@ impl BeatMapEditor {
         egui::TopBottomPanel::new(TopBottomSide::Top, "editor_top_progress")
             .frame(Frame::NONE)
             .min_height(height + 25.0)
+            .max_height(height + 25.0)
             .show(ctx, |ui| {
                 let width = ui.available_width();
                 let ui_height = ui.available_height();
                 let right_width = 250.0;
+
+                let start_point = ui.next_widget_position().add((0.0, 12.5).into());
+                {
+                    let start_point = ui.next_widget_position();
+                    let ui_builder = UiBuilder::new().max_rect(Rect::from_min_max(
+                        Pos2::new(start_point.x + width - right_width, start_point.y),
+                        Pos2::new(start_point.x + width, start_point.y + ui_height),
+                    ));
+                    ui.allocate_new_ui(ui_builder, |ui| {
+                        dbg!(ui.available_rect_before_wrap());
+                        // [-, +]
+                        let detail_dest = [
+                            [1, 1],
+                            // 1
+                            [1, 2],
+                            [1, 3],
+                            [2, 4],
+                            [3, 5],
+                            [4, 6],
+                            [5, 7],
+                            [6, 8],
+                            // 8
+                            [7, 16],
+                            [9, 9],
+                            [10, 10],
+                            [11, 11],
+                            [12, 12],
+                            [13, 13],
+                            [14, 14],
+                            [15, 15],
+                            [8, 16],
+                        ];
+
+                        ui.with_layout(Layout::left_to_right(Align::BOTTOM), |ui| {
+                            let minus_res = ui.button("-");
+                            if minus_res.clicked() {
+                                self.input_cache.detail =
+                                    detail_dest[self.input_cache.detail as usize][0];
+                            }
+
+                            ui.label(format!("1 / {}", self.input_cache.detail));
+
+                            let space =
+                                (ui.available_width() - minus_res.rect.width()).at_least(0.0);
+                            ui.add_space(space);
+                            if ui.button("+").clicked() {
+                                self.input_cache.detail =
+                                    detail_dest[self.input_cache.detail as usize][1];
+                            }
+                        });
+                    });
+                }
+
                 let progress_width = (width - right_width).ceil();
                 if progress_width <= 1.0 {
                     return;
                 }
-                let start_point = ui.next_widget_position().add((0.0, 12.5).into());
                 let background_rect = Rect {
                     min: start_point,
                     max: (start_point.x + progress_width, start_point.y + height).into(),
@@ -437,7 +489,7 @@ impl BeatMapEditor {
                     .get_beat_iterator(
                         self.input_cache.select_timing_group,
                         secs_to_offset_type(left_time),
-                        self.input_cache.detail
+                        self.input_cache.detail,
                     )
                     .filter(|x| x.number >= 0)
                     .try_for_each(|beat| {
@@ -451,7 +503,8 @@ impl BeatMapEditor {
                         } else {
                             start_point.y..=start_point.y + height
                         };
-                        let color = Color32::from_gray(if beat.is_measure { 233 } else { 222 });
+                        let color = beat.get_color();
+
                         ui.painter().vline(beat_x, range, Stroke::new(width, color));
 
                         ControlFlow::Continue(())
@@ -586,7 +639,7 @@ impl BeatMapEditor {
                                 let (left, _, right) = self.beatmap.timing_group.get_near_beat(
                                     self.input_cache.select_timing_group,
                                     self.input_cache.current_duration.as_millis() as OffsetType,
-                                    self.input_cache.detail
+                                    self.input_cache.detail,
                                 );
                                 let dest_time = if input.raw_scroll_delta.y < 0.0 {
                                     // go right

@@ -161,17 +161,18 @@ impl BeatMapEditor {
                         continue;
                     }
                     let time_y = time_map_ui_y(x.time as f32 / 1000.0);
+                    let color = x.get_color();
                     if x.is_measure {
                         ui.painter().hline(
                             rect.left()..=rect.right(),
                             time_y,
-                            Stroke::new(3.0, Color32::from_gray(233)),
+                            Stroke::new(3.0, color),
                         );
                     } else {
                         ui.painter().hline(
                             rect.left()..=rect.right(),
                             time_y,
-                            Stroke::new(1.0, Color32::from_gray(233)),
+                            Stroke::new(1.0, color),
                         );
                     }
                 }

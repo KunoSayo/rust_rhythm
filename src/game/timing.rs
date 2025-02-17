@@ -1,5 +1,5 @@
 use crate::game::OffsetType;
-use egui::NumExt;
+use egui::{Color32, NumExt};
 use num::CheckedAdd;
 use serde::{Deserialize, Serialize};
 use std::convert::Into;
@@ -53,10 +53,30 @@ impl Into<f32> for Bpm {
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, Ord, PartialOrd, PartialEq, Eq, Hash)]
 pub struct Beat {
     pub number: i32,
+    pub time: OffsetType,
     /// 小节细分索引，若为 0 则表示该 Beat
     pub index: u8,
+    pub detail: u8,
     pub is_measure: bool,
-    pub time: OffsetType,
+    
+}
+
+impl Beat {
+    pub const fn get_color(&self) -> Color32 {
+        let beat = self;
+        let color = if beat.index == 0 {
+            Color32::from_gray(if beat.is_measure { 233 } else { 222 })
+        } else {
+            if self.detail % 3 == 0 {
+                // 0   1   2   3
+                // 0 1 2 3 4 5 6
+            }
+
+            Color32::DARK_RED
+        };
+        
+        color
+    }
 }
 
 /// The timing event
@@ -109,6 +129,7 @@ impl Timing {
         let mut cur = Beat {
             number,
             index: 0,
+            detail,
             is_measure,
             time: beat_time,
         };
@@ -119,6 +140,7 @@ impl Timing {
                 cur = Beat {
                     number,
                     index: i,
+                    detail,
                     is_measure: false,
                     time: bt,
                 };
@@ -148,6 +170,7 @@ impl Timing {
             Beat {
                 number: cur_beat.number + 1,
                 index: 0,
+                detail,
                 is_measure: ((cur_beat.number + 1) % self.time_signature.get() as i32) == 0,
                 time: self.get_beat_time(cur_beat.number + 1, 0, detail),
             }
@@ -155,6 +178,7 @@ impl Timing {
             Beat {
                 number: cur_beat.number,
                 index: cur_beat.index + 1,
+                detail,
                 is_measure: false,
                 time: self.get_beat_time(cur_beat.number, cur_beat.index + 1, detail),
             }
@@ -345,6 +369,7 @@ mod test {
                     Beat {
                         number: i as i32,
                         index: 0,
+                        detail: 1,
                         is_measure: i == 0,
                         time: (i * 1000) as OffsetType,
                     }
@@ -355,6 +380,7 @@ mod test {
                 Beat {
                     number: 7,
                     index: 0,
+                    detail: 1,
                     is_measure: true,
                     time: 7000 as OffsetType,
                 }
@@ -369,6 +395,7 @@ mod test {
                         Beat {
                             number: i as i32,
                             index: idx as u8,
+                            detail: 2,
                             is_measure: i == 0 && idx == 0,
                             time: (i * 1000 + idx * 500) as OffsetType,
                         }
@@ -380,6 +407,7 @@ mod test {
                 Beat {
                     number: 7,
                     index: 0,
+                    detail: 2,
                     is_measure: true,
                     time: 7000 as OffsetType,
                 }
@@ -413,6 +441,7 @@ mod test {
                     Beat {
                         number: (i / 2) as i32,
                         index: (i as u8) % 2,
+                        detail: 2,
                         is_measure: i == 0,
                         time: (i * 500) as OffsetType,
                     }
@@ -423,6 +452,7 @@ mod test {
                 Beat {
                     number: 0,
                     index: 0,
+                    detail: 2,
                     is_measure: true,
                     time: 1500 as OffsetType,
                 }
@@ -432,6 +462,7 @@ mod test {
                 Beat {
                     number: 0,
                     index: 1,
+                    detail: 2,
                     is_measure: false,
                     time: 2000 as OffsetType,
                 }
@@ -441,6 +472,7 @@ mod test {
                 Beat {
                     number: 1,
                     index: 0,
+                    detail: 2,
                     is_measure: false,
                     time: 2500 as OffsetType,
                 }
