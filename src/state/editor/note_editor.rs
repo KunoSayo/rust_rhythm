@@ -1,5 +1,5 @@
 use crate::engine::renderer::texture_renderer::TextureRenderer;
-use crate::engine::StateData;
+use crate::engine::{EguiExt, StateData};
 use crate::game::beatmap::MapRule;
 use crate::game::note::consts::NOTE_HEIGHT_PIXEL;
 use crate::game::render::NoteRenderer;
@@ -10,17 +10,31 @@ use egui::epaint::PathStroke;
 use egui::panel::Side;
 use egui::{Color32, Frame, Pos2, Rect, Stroke, StrokeKind, Ui, Vec2};
 use num::Signed;
+use winit::keyboard::{KeyCode, PhysicalKey};
 use crate::game::note::{NormalNote, NoteHitType};
 
-#[derive(Default)]
-enum PointerType {
-    #[default]
-    Select,
+
+#[derive(Default, Copy, Clone)]
+pub struct ClickedPos {
+    pub x: f32,
+    pub time: OffsetType,
+}
+
+pub enum PointerType {
+    Select(Option<ClickedPos>),
+    NormalNote,
+    LongNote(Option<ClickedPos>)
+}
+
+impl Default for PointerType {
+    fn default() -> Self {
+        Self::Select(None)
+    }
 }
 
 pub struct BeatmapEditorData {
     /// The view seconds. At y = 1
-    pointer_type: PointerType,
+    pub(crate) pointer_type: PointerType,
 }
 
 impl Default for BeatmapEditorData {
@@ -62,32 +76,7 @@ where
 }
 
 impl BeatMapEditor {
-    #[inline]
-    #[must_use]
-    fn time_map_y(&self, time: f32) -> f32 {
-        (time - self.input_cache.current_duration.as_secs_f32())
-            / self.input_cache.progress_half_time
-    }
-    #[inline]
-    #[must_use]
-    fn time_map_ui_y(&self, time: f32, rect: &Rect) -> f32 {
-        rect.center().y - self.time_map_y(time) * rect.height() * 0.5
-    }
 
-    #[inline]
-    #[must_use]
-    fn game_x_map_ui_x(x: f32, rect: &Rect) -> f32 {
-        rect.center().x + x * rect.width() * 0.5
-    }
-
-    #[inline]
-    #[must_use]
-    fn get_place_note_width(&self) -> f32 {
-        match self.beatmap.rule {
-            MapRule::Falling => self.input_cache.note_width,
-            MapRule::FourKey => 0.25,
-        }
-    }
 
     /// Return the (x, time)
     fn get_note_pos_for_cursor(&self, s: &mut StateData, game_rect: &Rect) -> (f32, OffsetType) {
@@ -123,6 +112,11 @@ impl BeatMapEditor {
     }
 
     fn normal_note_pointer_update(&mut self, s: &mut StateData, ui: &mut Ui, game_rect: &Rect) {
+        let pos = s.app.inputs.mouse_state.pos;
+        if !game_rect.contains([pos.x, pos.y].into()) {
+            
+            return;
+        }
         let place_note_pos = self.get_note_pos_for_cursor(s, game_rect);
         let note_center_y = self.time_map_y(place_note_pos.1 as f32 / 1000.0);
         let note_center_ui_y = self.time_map_ui_y(place_note_pos.1 as f32 / 1000.0, game_rect);
@@ -158,7 +152,19 @@ impl BeatMapEditor {
         if game_rect.contains([pos.x, pos.y].into()) {
             self.scroll_beat(ui);
 
-            self.normal_note_pointer_update(s, ui, game_rect);
+            
+        }
+        
+        match self.input_cache.edit_data.pointer_type {
+            PointerType::Select(start_pos) => {
+                
+            }
+            PointerType::NormalNote => {
+                self.normal_note_pointer_update(s, ui, game_rect);
+            }
+            PointerType::LongNote(start_pos) => {
+                
+            }
         }
 
         let tr = s.app.world.fetch::<TextureRenderer>();
@@ -174,7 +180,19 @@ impl BeatMapEditor {
             .max_width(200.0)
             .resizable(false)
             .show(ctx, |ui| {
-                ui.vertical(|ui| {});
+                ui.vertical(|ui| {
+                    let size = Vec2::new(100.0, 50.0);
+                    let data = &mut self.input_cache.edit_data;
+                    if ui.select_button("Select", matches!(data.pointer_type, PointerType::Select(_)), size).clicked() {
+                        data.pointer_type = PointerType::Select(None);
+                    }
+                    if ui.select_button("Normal", matches!(data.pointer_type, PointerType::NormalNote), size).clicked() {
+                        data.pointer_type = PointerType::NormalNote;
+                    }
+                    if ui.select_button("Long", matches!(data.pointer_type, PointerType::LongNote(_)), size).clicked() {
+                        data.pointer_type = PointerType::LongNote(None);
+                    }
+                });
             });
 
         egui::CentralPanel::default()
@@ -259,5 +277,32 @@ impl BeatMapEditor {
 
                 self.render_game_viewport(s, ui, &rect);
             });
+    }
+
+    #[inline]
+    #[must_use]
+    fn time_map_y(&self, time: f32) -> f32 {
+        (time - self.input_cache.current_duration.as_secs_f32())
+            / self.input_cache.progress_half_time
+    }
+    #[inline]
+    #[must_use]
+    fn time_map_ui_y(&self, time: f32, rect: &Rect) -> f32 {
+        rect.center().y - self.time_map_y(time) * rect.height() * 0.5
+    }
+
+    #[inline]
+    #[must_use]
+    fn game_x_map_ui_x(x: f32, rect: &Rect) -> f32 {
+        rect.center().x + x * rect.width() * 0.5
+    }
+
+    #[inline]
+    #[must_use]
+    fn get_place_note_width(&self) -> f32 {
+        match self.beatmap.rule {
+            MapRule::Falling => self.input_cache.note_width,
+            MapRule::FourKey => 0.25,
+        }
     }
 }

@@ -162,14 +162,16 @@ pub fn edit_dyn_data(ui: &mut Ui, id: &'static str, mut data_str: String) -> Opt
 }
 
 
-pub fn optional_set<T>(ui: &mut Ui, text: impl Into<WidgetText>, data: &mut Option<T>, def: T) {
+pub fn optional_set<T>(ui: &mut Ui, text: impl Into<WidgetText>, data: &mut Option<T>, def: T) -> bool {
+    let mut dirty = false;
     let mut set = data.is_some();
-    ui.checkbox(&mut set, text);
+    dirty |= ui.checkbox(&mut set, text).changed();
     if set {
         data.get_or_insert(def);
     } else {
         data.take();
     }
+    dirty
 }
 
 /// Optional set data
@@ -179,13 +181,15 @@ pub fn optional_edit<T: Default + FromStr + ToString>(
     text: impl Into<WidgetText>,
     data: &mut Option<T>,
     def: T
-) {
-    optional_set(ui, text, data, def);
+) -> bool {
+    let mut dirty = optional_set(ui, text, data, def);
     if let Some(v) = data {
         if let Some(result) = edit_dyn_data(ui, id, v.to_string()) {
             if let Ok(new) = result.parse::<T>() {
                 data.insert(new);
+                dirty |= true;
             }
         }
     }
+    dirty
 }

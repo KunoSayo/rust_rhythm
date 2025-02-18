@@ -20,27 +20,27 @@ impl BeatMapEditor {
                     ui.add_space(10.0);
                     ui.horizontal(|ui| {
                         ui.add(none_select_label("Title: "));
-                        edit(&mut self.beatmap.metadata.title).ui(ui);
+                        self.dirty |= edit(&mut self.beatmap.metadata.title).ui(ui).changed();
                     });
                     ui.horizontal(|ui| {
                         ui.add(none_select_label("Artist: "));
-                        edit(&mut self.beatmap.metadata.artist).ui(ui);
+                        self.dirty |= edit(&mut self.beatmap.metadata.artist).ui(ui).changed();
                     });
                     ui.horizontal(|ui| {
                         ui.add(none_select_label("Creator: "));
-                        edit(&mut self.beatmap.metadata.creator).ui(ui);
+                        self.dirty |= edit(&mut self.beatmap.metadata.creator).ui(ui).changed();
                     });
                     ui.horizontal(|ui| {
                         ui.add(none_select_label("Version: "));
-                        edit(&mut self.beatmap.metadata.version).ui(ui);
+                        self.dirty |= edit(&mut self.beatmap.metadata.version).ui(ui).changed();
                     });
                     ui.horizontal(|ui| {
                         ui.add(none_select_label("Source: "));
-                        edit(&mut self.beatmap.metadata.source).ui(ui);
+                        self.dirty |= edit(&mut self.beatmap.metadata.source).ui(ui).changed();
                     });
                     ui.horizontal(|ui| {
                         ui.add(none_select_label("Tags: "));
-                        edit(&mut self.beatmap.metadata.tags).ui(ui);
+                        self.dirty |= edit(&mut self.beatmap.metadata.tags).ui(ui).changed();
                     });
 
                     self.dirty |= ui.radio_value(&mut self.beatmap.rule, MapRule::Falling, "Falling").changed();

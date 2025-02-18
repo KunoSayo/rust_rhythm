@@ -5,11 +5,14 @@ use crate::game::beatmap::{SongBeatmapInfo, BEATMAP_EXT};
 use crate::game::song::{SongInfo, SongManagerResourceType};
 use crate::game::timing::TimingGroupBeatIterator;
 use crate::game::{secs_to_offset_type, OffsetType};
-use crate::state::editor::note_editor::BeatmapEditorData;
+use crate::state::editor::note_editor::{BeatmapEditorData, PointerType};
 use anyhow::anyhow;
 use egui::epaint::PathStroke;
 use egui::panel::TopBottomSide;
-use egui::{Align, Button, Color32, Context, Frame, Layout, NumExt, Pos2, Rect, Sense, Stroke, TextEdit, TextStyle, Ui, UiBuilder, Vec2};
+use egui::{
+    Align, Button, Color32, Context, Frame, Layout, NumExt, Pos2, Rect, Sense, Stroke, TextEdit,
+    TextStyle, Ui, UiBuilder, Vec2,
+};
 use rodio::{Decoder, OutputStreamHandle, Sink, Source};
 use std::io::{Cursor, Read};
 use std::ops::{Add, ControlFlow, Deref, Mul};
@@ -55,7 +58,7 @@ pub(in crate::state::editor) struct InputCache {
     pub(in crate::state::editor) select_timing_group: usize,
     pub(in crate::state::editor) select_timing_row: Option<usize>,
     pub(in crate::state::editor) edit_data: BeatmapEditorData,
-    pub(in crate::state::editor) note_width: f32
+    pub(in crate::state::editor) note_width: f32,
 }
 
 impl Default for InputCache {
@@ -139,9 +142,63 @@ impl BeatMapEditor {
             dirty,
         })
     }
+
+    pub fn save(&mut self, s: &mut StateData) {
+        if self.save_path.is_none()
+            && (self.beatmap.metadata.title.is_empty() || self.beatmap.metadata.version.is_empty())
+        {
+            return;
+        }
+        if !self.dirty {
+            return;
+        }
+        let path = self.save_path.get_or_insert_with(|| {
+            self.song_info.bgm_file.parent().unwrap().join(
+                format!(
+                    "{}[{}]",
+                    &self.beatmap.metadata.title, &self.beatmap.metadata.version
+                ) + "."
+                    + BEATMAP_EXT,
+            )
+        });
+        let path = path.clone();
+        let beatmap = self.beatmap.clone();
+        let info = self.song_info.clone();
+        let song_manager =
+            s.wd.world
+                .fetch::<SongManagerResourceType>()
+                .deref()
+                .clone();
+        // IO_POOL.spawn_ok(async move {
+        if let Err(e) = beatmap.save_to(&path) {
+            log::error!("Failed to save beatmap for {:?}", e);
+        } else {
+            match info.reload() {
+                Ok(new_info) => {
+                    song_manager.load_new_info(new_info);
+                    info.dirty.store(true, Ordering::Release);
+                    self.dirty = false;
+                }
+                Err(e) => {
+                    log::error!("Failed to load beatmap for {:?}", e);
+                }
+            }
+        }
+        // });
+    }
 }
 
 impl GameState for BeatMapEditor {
+    fn start(&mut self, s: &mut StateData) -> LoopState {
+        s.app.window.set_title(&format!(
+            "{}{}",
+            &self.beatmap.metadata.title,
+            ["", " *"][self.dirty as usize]
+        ));
+
+        LoopState::WAIT_ALL
+    }
+
     fn update(&mut self, s: &mut StateData) -> (Trans, LoopState) {
         self.check_sink();
         let mut tran = Trans::None;
@@ -163,8 +220,37 @@ impl GameState for BeatMapEditor {
         {
             self.switch_play();
         }
-        
-        s.app.window.set_title(&format!("{}{}", &self.beatmap.metadata.title, [""," *"][self.dirty as usize]));
+
+        if s.app.inputs.is_pressed(&[
+            PhysicalKey::Code(KeyCode::ControlLeft),
+            PhysicalKey::Code(KeyCode::KeyS),
+        ]) {
+            self.save(s);
+        }
+
+        {
+            if !s.app.egui_ctx.wants_keyboard_input() {
+                let data = &mut self.input_cache.edit_data;
+                if s.app
+                    .inputs
+                    .is_pressed(&[PhysicalKey::Code(KeyCode::Digit1)])
+                {
+                    data.pointer_type = PointerType::Select(None);
+                }
+                if s.app
+                    .inputs
+                    .is_pressed(&[PhysicalKey::Code(KeyCode::Digit2)])
+                {
+                    data.pointer_type = PointerType::NormalNote;
+                }
+                if s.app
+                    .inputs
+                    .is_pressed(&[PhysicalKey::Code(KeyCode::Digit3)])
+                {
+                    data.pointer_type = PointerType::LongNote(None);
+                }
+            }
+        }
 
         let cur_input = &s.app.inputs.cur_frame_input;
         if cur_input
@@ -203,48 +289,18 @@ impl GameState for BeatMapEditor {
             }
         }
 
+        s.app.window.set_title(&format!(
+            "{}{}",
+            &self.beatmap.metadata.title,
+            ["", " *"][self.dirty as usize]
+        ));
+
         tran
     }
 
     fn stop(&mut self, s: &mut StateData) {
         // Do save work
-        if self.save_path.is_none()
-            && (self.beatmap.metadata.title.is_empty() || self.beatmap.metadata.version.is_empty())
-        {
-            return;
-        }
-        let path = self.save_path.get_or_insert_with(|| {
-            self.song_info.bgm_file.parent().unwrap().join(
-                format!(
-                    "{}[{}]",
-                    &self.beatmap.metadata.title, &self.beatmap.metadata.version
-                ) + "."
-                    + BEATMAP_EXT,
-            )
-        });
-        let path = path.clone();
-        let beatmap = self.beatmap.clone();
-        let info = self.song_info.clone();
-        let song_manager =
-            s.wd.world
-                .fetch::<SongManagerResourceType>()
-                .deref()
-                .clone();
-        IO_POOL.spawn_ok(async move {
-            if let Err(e) = beatmap.save_to(&path) {
-                log::error!("Failed to save beatmap for {:?}", e);
-            } else {
-                match info.reload() {
-                    Ok(new_info) => {
-                        song_manager.load_new_info(new_info);
-                        info.dirty.store(true, Ordering::Release);
-                    }
-                    Err(e) => {
-                        log::error!("Failed to load beatmap for {:?}", e);
-                    }
-                }
-            }
-        });
+        self.save(s);
     }
 }
 
@@ -466,24 +522,21 @@ impl BeatMapEditor {
                 let center_y = start_point.y + height * 0.5;
                 let half_height = height * 0.5;
 
-                
                 // Render the wave.
                 if true {
-                    vec.iter_mut()
-                        .enumerate()
-                        .for_each(|(offset, (mn, mx))| {
-                            let high = *mx.get_mut() as f32 / mx_val;
-                            let low = *mn.get_mut() as f32 / mx_val;
+                    vec.iter_mut().enumerate().for_each(|(offset, (mn, mx))| {
+                        let high = *mx.get_mut() as f32 / mx_val;
+                        let low = *mn.get_mut() as f32 / mx_val;
 
-                            let high = center_y - high.abs() * half_height;
-                            let low = center_y + low.abs() * half_height;
-                            let color = Color32::from_rgb(108, 172, 200);
-                            painter.vline(
-                                start_point.x + offset as f32,
-                                high..=low,
-                                Stroke::new(1.125, color),
-                            );
-                        });
+                        let high = center_y - high.abs() * half_height;
+                        let low = center_y + low.abs() * half_height;
+                        let color = Color32::from_rgb(108, 172, 200);
+                        painter.vline(
+                            start_point.x + offset as f32,
+                            high..=low,
+                            Stroke::new(1.125, color),
+                        );
+                    });
                 }
 
                 // render timings lines
@@ -723,12 +776,11 @@ impl BeatMapEditor {
                 // go left
                 left.time
             }
-                .clamp(0, self.total_duration.as_millis() as OffsetType);
+            .clamp(0, self.total_duration.as_millis() as OffsetType);
 
             self.sink
                 .try_seek(
-                    Duration::from_millis(dest_time as u64)
-                        .mul((1.0 / self.sink.speed()) as u32),
+                    Duration::from_millis(dest_time as u64).mul((1.0 / self.sink.speed()) as u32),
                 )
                 .expect("Failed to seek");
         });
@@ -750,19 +802,64 @@ pub fn format_ms(ms: i128) -> String {
 pub fn get_duration_from_str(str: &str) -> Option<Duration> {
     let mut it = str.rsplitn(3, ":");
     let ms = it.next()?.parse::<u64>().ok()?;
-    let s = it
-        .next()
-        .map(|x| x.parse::<u64>().ok())
-        .unwrap_or(Some(0))?;
-    let m = it
-        .next()
-        .map(|x| x.parse::<u64>().ok())
-        .unwrap_or(Some(0))?;
+    let s = it.next().map(|x| x.parse::<u64>().ok());
+    let m = it.next().map(|x| x.parse::<u64>().ok());
 
-    Some(Duration::from_millis(
-        ms.checked_add(
-            s.checked_mul(1000)?
-                .checked_add(m.checked_mul(1000 * 60)?)?,
-        )?,
-    ))
+    if let Some(m) = m {
+        let m = m?;
+        let s = s.unwrap()?;
+        Some(Duration::from_millis(
+            ms.checked_add(
+                s.checked_mul(1000)?
+                    .checked_add(m.checked_mul(1000 * 60)?)?,
+            )?,
+        ))
+    } else if let Some(s) = s {
+        let m = s?;
+        let s = ms;
+        let ms = 0u64;
+        Some(Duration::from_millis(
+            ms.checked_add(
+                s.checked_mul(1000)?
+                    .checked_add(m.checked_mul(1000 * 60)?)?,
+            )?,
+        ))
+    } else {
+        let m = 0u64;
+        let s = 0u64;
+        Some(Duration::from_millis(
+            ms.checked_add(
+                s.checked_mul(1000)?
+                    .checked_add(m.checked_mul(1000 * 60)?)?,
+            )?,
+        ))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::state::editor::editor::get_duration_from_str;
+    use std::time::Duration;
+
+    #[test]
+    fn test_parse_dur() {
+        assert_eq!(get_duration_from_str("1"), Some(Duration::from_millis(1)));
+        assert_eq!(get_duration_from_str("0"), Some(Duration::from_millis(0)));
+        assert_eq!(
+            get_duration_from_str("1:2:3"),
+            Some(Duration::from_millis(3 + 2 * 1000 + 1 * 1000 * 60))
+        );
+        assert_eq!(
+            get_duration_from_str("1234"),
+            Some(Duration::from_millis(1234))
+        );
+        assert_eq!(
+            get_duration_from_str("1:0"),
+            Some(Duration::from_millis(60 * 1000))
+        );
+        assert_eq!(
+            get_duration_from_str("1:50"),
+            Some(Duration::from_millis(60 * 1000 + 50 * 1000))
+        );
+    }
 }

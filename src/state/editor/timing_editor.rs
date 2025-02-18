@@ -96,11 +96,11 @@ impl BeatMapEditor {
 
                             const ID: &'static str = "BPM_EDIT";
 
-                            optional_edit(ui, ID, "Set BPM", &mut tl.set_bpm, Bpm::default());
+                            self.dirty |= optional_edit(ui, ID, "Set BPM", &mut tl.set_bpm, Bpm::default());
 
                             ui.separator();
                             const SET_SPEED: &'static str = "Set Speed";
-                            optional_edit(ui, SET_SPEED, SET_SPEED, &mut tl.set_speed, 1.0);
+                            self.dirty |= optional_edit(ui, SET_SPEED, SET_SPEED, &mut tl.set_speed, 1.0);
                             tl.set_speed = tl.set_speed.map(|x| x.clamp(0.01, 10.0));
                         }
                     }
