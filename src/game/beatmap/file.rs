@@ -66,6 +66,11 @@ impl SongBeatmapFile {
             rule: MapRule::Falling,
         }
     }
+    
+    /// Update the data and cache.
+    pub fn update(&mut self) {
+        self.timing_group.update();
+    }
 }
 
 pub fn ser_to_ron<T: Serialize>(

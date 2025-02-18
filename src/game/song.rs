@@ -75,10 +75,11 @@ impl SongInfo {
             .map(|entry| -> anyhow::Result<SongBeatmapInfo> {
                 let data = std::fs::read(entry.path())?;
                 let beatmap = de_from_ron(&data)?;
-                let info = SongBeatmapInfo {
+                let mut info = SongBeatmapInfo {
                     file_path: entry.path(),
                     song_beatmap_file: beatmap,
                 };
+                info.song_beatmap_file.update();
                 Ok(info)
             })
             .filter_map(|result| {

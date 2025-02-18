@@ -110,10 +110,10 @@ pub struct Timing {
     pub time_signature: NonZeroU8,
     #[serde(skip)]
     /// The bpm extended from last timing or this timing
-    pub bpm: Bpm,
+    bpm: Bpm,
     /// The speed extended from last timing or this timing
     #[serde(skip)]
-    pub speed: f32,
+    speed: f32,
 }
 pub const DEFAULT_TIMING: Timing = Timing {
     set_bpm: Some(Bpm(60 * 100)),
@@ -144,6 +144,14 @@ pub struct TimingGroup {
 }
 
 impl Timing {
+    
+    pub fn get_bpm(&self) -> Bpm {
+        self.bpm
+    }
+    
+    pub fn get_speed(&self) -> f32 {
+        self.speed
+    }
     /// Return the left beat (or self) at the time
     pub fn get_left_beat(&self, time: OffsetType, detail: u8) -> Beat {
         let delta = time - self.offset;
@@ -244,7 +252,43 @@ impl TimingLine {
     pub fn add_new(&mut self, timing: Timing) {
         self.timings.retain(|x| x.offset != timing.offset);
         self.timings.push(timing);
+        self.update();
+    }
+    
+    pub fn update(&mut self) {
+        self.timings.retain(|x| x.offset >= 0);
         self.timings.sort_by_key(|x| x.offset);
+        let mut cur_bpm = Bpm::default();
+        let mut cur_speed = 1.0;
+        for t in self.timings.iter_mut() {
+            if let Some(bpm) = t.set_bpm {
+                cur_bpm = bpm;
+            }
+            if let Some(speed) = t.set_speed {
+                cur_speed = speed;
+            }
+            t.bpm = cur_bpm;
+            t.speed = cur_speed;
+        }
+    }
+    
+    /// Return the timing slice that first element offset is less equal than then given offset in this timing line.
+    pub fn get_timings(&self, offset: OffsetType) -> &[Timing] {
+        let t = if self.timings.is_empty() {
+            &[DEFAULT_TIMING][..]
+        } else {
+            match self.timings.binary_search_by_key(&offset, |x| x.offset) {
+                Ok(idx) => &self.timings[idx..],
+                Err(idx) => {
+                    if idx == 0 {
+                        &self.timings[0..]
+                    } else {
+                        &self.timings[idx - 1..]
+                    }
+                }
+            }
+        };
+        t
     }
 }
 
@@ -254,26 +298,18 @@ impl TimingGroup {
             timing_lines: vec![TimingLine::default()],
         }
     }
+    
+    pub fn update(&mut self) {
+        for x in &mut self.timing_lines {
+            x.update();
+        }
+    }
 
     /// Return the timing slice that first element offset is less equal than the given offset in the group by the offset.
     /// if there no such group or timing, return the next timing slice or default timing.
-    pub fn get_timings(&self, group_index: usize, offset: OffsetType) -> &[Timing] {
+    pub fn get_timing(&self, group_index: usize, offset: OffsetType) -> &[Timing] {
         if let Some(tl) = self.timing_lines.get(group_index) {
-            let t = if tl.timings.is_empty() {
-                &[DEFAULT_TIMING][..]
-            } else {
-                match tl.timings.binary_search_by_key(&offset, |x| x.offset) {
-                    Ok(idx) => &tl.timings[idx..],
-                    Err(idx) => {
-                        if idx == 0 {
-                            &tl.timings[0..]
-                        } else {
-                            &tl.timings[idx - 1..]
-                        }
-                    }
-                }
-            };
-            t
+            tl.get_timings(offset)
         } else {
             &[DEFAULT_TIMING][..]
         }
@@ -292,7 +328,7 @@ impl TimingGroup {
             let beat = it.next().unwrap();
             if beat.time == offset {
                 now = Some(beat);
-                let tl = self.get_timings(group_index, offset - 1);
+                let tl = self.get_timing(group_index, offset - 1);
                 let left = tl[0].get_left_beat(offset - 1, detail);
                 (left, it.next().unwrap())
             } else {
@@ -335,7 +371,7 @@ impl TimingGroup {
         detail: u8,
     ) -> TimingGroupBeatIterator {
         TimingGroupBeatIterator {
-            last_timing: self.get_timings(group_index, start_offset),
+            last_timing: self.get_timing(group_index, start_offset),
             last_beat: Err(start_offset),
             detail,
         }

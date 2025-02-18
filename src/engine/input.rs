@@ -1,8 +1,10 @@
 #![allow(unused)]
 
+use egui::{Ui, WidgetText};
 use single_thread_cell::SingleThreadRefCell;
 use std::collections::{HashMap, HashSet};
 use std::mem::swap;
+use std::str::FromStr;
 use winit::dpi::PhysicalPosition;
 use winit::event::{Touch, TouchPhase};
 use winit::keyboard::PhysicalKey;
@@ -51,7 +53,6 @@ pub struct BakedInputs {
     pub mouse_state: MouseState,
 }
 
-
 impl BakedInputs {
     pub fn process(&mut self, pressed: &HashSet<PhysicalKey>, released: &HashSet<PhysicalKey>) {
         for key in pressed.iter() {
@@ -76,15 +77,21 @@ impl BakedInputs {
         //clone for not lose temp info
         self.cur_frame_input = self.cur_temp_input.clone();
 
-        self.pressed_any_cur_frame = self.cur_frame_input.pressing.iter()
+        self.pressed_any_cur_frame = self
+            .cur_frame_input
+            .pressing
+            .iter()
             .filter(|k| !self.last_frame_input.pressing.contains(k))
             .count();
     }
 
     /// Get press state between frames.
     pub fn is_pressed(&self, keys: &[PhysicalKey]) -> bool {
-        keys.iter().any(|k| !self.last_frame_input.pressing.contains(k))
-            && keys.iter().all(|k| self.cur_frame_input.pressing.contains(k))
+        keys.iter()
+            .any(|k| !self.last_frame_input.pressing.contains(k))
+            && keys
+                .iter()
+                .all(|k| self.cur_frame_input.pressing.contains(k))
     }
 }
 
@@ -94,7 +101,6 @@ impl RawInputData {
         Self::default()
     }
 }
-
 
 pub struct UiThreadTextEditCache {
     editing: &'static str,
@@ -110,7 +116,8 @@ impl Default for UiThreadTextEditCache {
     }
 }
 
-static EDIT_CACHE: once_cell::sync::Lazy<SingleThreadRefCell<UiThreadTextEditCache>> = once_cell::sync::Lazy::new(|| Default::default());
+static EDIT_CACHE: once_cell::sync::Lazy<SingleThreadRefCell<UiThreadTextEditCache>> =
+    once_cell::sync::Lazy::new(|| Default::default());
 
 pub fn get_edit_cache() -> single_thread_cell::SingleThreadRefMut<'static, UiThreadTextEditCache> {
     EDIT_CACHE.borrow_mut()
@@ -130,5 +137,55 @@ impl UiThreadTextEditCache {
 
     pub fn is_editing(&self, id: &'static str) -> bool {
         std::ptr::addr_eq(self.editing, id)
+    }
+}
+
+/// Edit the text and return the edit result if end edit.
+pub fn edit_dyn_data(ui: &mut Ui, id: &'static str, mut data_str: String) -> Option<String> {
+    let mut cache = get_edit_cache();
+
+    let response = if cache.is_editing(id) {
+        ui.text_edit_singleline(&mut cache.text)
+    } else {
+        ui.text_edit_singleline(&mut data_str)
+    };
+
+    if response.has_focus() {
+        cache.edit(&data_str, id);
+        None
+    } else if response.lost_focus() {
+        cache.release();
+        Some(cache.text.clone())
+    } else {
+        None
+    }
+}
+
+
+pub fn optional_set<T>(ui: &mut Ui, text: impl Into<WidgetText>, data: &mut Option<T>, def: T) {
+    let mut set = data.is_some();
+    ui.checkbox(&mut set, text);
+    if set {
+        data.get_or_insert(def);
+    } else {
+        data.take();
+    }
+}
+
+/// Optional set data
+pub fn optional_edit<T: Default + FromStr + ToString>(
+    ui: &mut Ui,
+    id: &'static str,
+    text: impl Into<WidgetText>,
+    data: &mut Option<T>,
+    def: T
+) {
+    optional_set(ui, text, data, def);
+    if let Some(v) = data {
+        if let Some(result) = edit_dyn_data(ui, id, v.to_string()) {
+            if let Ok(new) = result.parse::<T>() {
+                data.insert(new);
+            }
+        }
     }
 }
