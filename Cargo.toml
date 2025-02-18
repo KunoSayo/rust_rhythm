@@ -57,7 +57,7 @@ serde_repr = "0.1.19"
 ron = "0.8.1"
 rfd = "0.15.1"
 
-single_thread_cell = "0.2.0"
+single_thread_cell = "0.3.0"
 
 
 [features]

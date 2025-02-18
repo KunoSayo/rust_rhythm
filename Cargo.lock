@@ -3429,9 +3429,9 @@ dependencies = [
 
 [[package]]
 name = "single_thread_cell"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea7fbfe415d11bc1762083159e8b35eddb9db12e1e76849e5c6a23c7fc47bf66"
+checksum = "6ccae987b77d546d057260fa6aac734c196cec300940525fd7c454d36b0a26c1"
 
 [[package]]
 name = "slab"

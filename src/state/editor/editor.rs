@@ -466,21 +466,25 @@ impl BeatMapEditor {
                 let center_y = start_point.y + height * 0.5;
                 let half_height = height * 0.5;
 
-                vec.iter_mut()
-                    .enumerate()
-                    .for_each(|(offset, (mn, mx))| {
-                        let high = *mx.get_mut() as f32 / mx_val;
-                        let low = *mn.get_mut() as f32 / mx_val;
+                
+                // Render the wave.
+                if false {
+                    vec.iter_mut()
+                        .enumerate()
+                        .for_each(|(offset, (mn, mx))| {
+                            let high = *mx.get_mut() as f32 / mx_val;
+                            let low = *mn.get_mut() as f32 / mx_val;
 
-                        let high = center_y - high.abs() * half_height;
-                        let low = center_y + low.abs() * half_height;
-                        let color = Color32::from_rgb(108, 172, 200);
-                        painter.vline(
-                            start_point.x + offset as f32,
-                            high..=low,
-                            Stroke::new(1.125, color),
-                        );
-                    });
+                            let high = center_y - high.abs() * half_height;
+                            let low = center_y + low.abs() * half_height;
+                            let color = Color32::from_rgb(108, 172, 200);
+                            painter.vline(
+                                start_point.x + offset as f32,
+                                high..=low,
+                                Stroke::new(1.125, color),
+                            );
+                        });
+                }
 
                 // render timings lines
 
