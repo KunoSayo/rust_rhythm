@@ -38,10 +38,7 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          path: ${{ github.workspace }}/artifacts
-          name: ${{ matrix.os }}-${{ github.run_number }}
-      - name: Upload res
-        uses: actions/upload-artifact@v4
-        with:
-          path: ${{ github.workspace }}/res/assets
+          path: |
+            ${{ github.workspace }}/artifacts
+            ${{ github.workspace }}/res/
           name: ${{ matrix.os }}-${{ github.run_number }}
