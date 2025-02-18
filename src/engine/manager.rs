@@ -538,6 +538,8 @@ pub trait EngineEventLoopProxy {
     fn set_control_flow(&self, cf: ControlFlow);
 
     fn run_loop_task(&self, f: Box<dyn FnOnce(&ActiveEventLoop) + Send>);
+
+    fn request_draw(&self, window: &Window);
 }
 
 impl EngineEventLoopProxy for &ActiveEventLoop {
@@ -563,6 +565,10 @@ impl EngineEventLoopProxy for &ActiveEventLoop {
 
     fn run_loop_task(&self, f: Box<dyn FnOnce(&ActiveEventLoop) + Send>) {
         f(self);
+    }
+
+    fn request_draw(&self, window: &Window) {
+        window.request_redraw();
     }
 }
 
@@ -918,7 +924,7 @@ impl WindowManager {
                     this.loop_once(&mut wd);
                     let ls = this.loop_info.loop_state;
                     if ls.render > 0.0 {
-                        this.app.window.request_redraw();
+                        event_loop.request_draw(&this.app.window);
                     }
                     this.loop_info.loop_state = ls;
                     f_ls |= ls;
@@ -991,6 +997,7 @@ struct AsyncWindowManagerInner {
     sender: Sender<ToLoopMessage>,
     cf: Cell<ControlFlow>,
     exiting: Cell<bool>,
+    request_draws: RefCell<HashSet<WindowId>>,
 }
 
 impl AsyncWindowManagerInner {
@@ -1008,6 +1015,7 @@ impl AsyncWindowManagerInner {
             sender: tx,
             cf: Cell::new(Default::default()),
             exiting: Cell::new(false),
+            request_draws: Default::default(),
         };
         Ok(this)
     }
@@ -1022,7 +1030,6 @@ impl AsyncWindowManagerInner {
             let mut should_try_recv = Cell::new(0);
 
             let mut s_msg = None;
-            let mut already_draw = RefCell::new(HashSet::new());
             let start_cause = match self.cf.get() {
                 ControlFlow::Poll => {
                     if let Ok(msg) = self.recv.try_recv() {
@@ -1076,9 +1083,7 @@ impl AsyncWindowManagerInner {
             let mut process_msg = |msg| match msg {
                 LoopMessage::WindowEvent(id, e, t) => {
                     if matches!(e, WindowEvent::RedrawRequested) {
-                        if already_draw.borrow_mut().insert(id) {
-                            wm.on_window_event(&self, id, e, t);
-                        }
+                        self.request_draws.borrow_mut().insert(id);
                     } else {
                         wm.on_window_event(&self, id, e, t);
                     }
@@ -1108,7 +1113,13 @@ impl AsyncWindowManagerInner {
                 }
             }
             wm.on_about_to_wait(&self);
+            self.request_draws.borrow().iter().for_each(|id| {
+                wm.on_window_event(&self, *id, WindowEvent::RedrawRequested, Instant::now());
+            });
+
+            self.request_draws.borrow_mut().clear();
             log::trace!("Loop inner end");
+            
         }
     }
 
@@ -1159,6 +1170,10 @@ impl EngineEventLoopProxy for &AsyncWindowManagerInner {
             self,
             Box::new(|el| f(el)),
         ))
+    }
+
+    fn request_draw(&self, window: &Window) {
+        self.request_draws.borrow_mut().insert(window.id());
     }
 }
 
