@@ -33,9 +33,9 @@ pub struct SongBeatmapFile {
     pub metadata: BeatmapMetadata,
     pub timing_group: TimingGroup,
     #[serde(default)]
-    pub normal_note: Vec<NormalNote>,
+    pub normal_notes: Vec<NormalNote>,
     #[serde(default)]
-    pub long_note: Vec<LongNote>,
+    pub long_notes: Vec<LongNote>,
     #[serde(default)]
     pub rule: MapRule,
 }
@@ -61,8 +61,8 @@ impl SongBeatmapFile {
             version: 0,
             metadata: BeatmapMetadata::new(title),
             timing_group: TimingGroup::new(),
-            normal_note: vec![],
-            long_note: vec![],
+            normal_notes: vec![],
+            long_notes: vec![],
             rule: MapRule::Falling,
         }
     }

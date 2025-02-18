@@ -39,6 +39,8 @@ pub trait Note {
 
     // Get the start time
     fn get_time(&self) -> OffsetType;
+    
+    fn get_end_time(&self) -> Option<OffsetType> { None }
 
     fn get_note_type(&self) -> NoteHitType;
 
@@ -80,6 +82,10 @@ impl Note for LongNote {
         self.start_time
     }
 
+    fn get_end_time(&self) -> Option<OffsetType> {
+        Some(self.end_time)
+    }
+
     fn get_note_type(&self) -> NoteHitType {
         NoteHitType::Click
     }
@@ -87,4 +93,6 @@ impl Note for LongNote {
     fn get_timing_group(&self) -> u8 {
         self.timing_group
     }
+    
+    
 }

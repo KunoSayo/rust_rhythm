@@ -39,6 +39,18 @@ pub struct MouseState {
     pub last_left_click: bool,
 }
 
+impl MouseState {
+    /// Take the clicked result if click
+    pub fn take_is_clicked(&mut self) -> bool {
+        if self.left_click && !self.last_left_click {
+            self.last_left_click = true;
+            true
+        } else {
+            false
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct BakedInputs {
     pub cur_temp_input: RawInputData,

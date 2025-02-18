@@ -40,12 +40,7 @@ impl TextureObject {
     ) -> Self {
         let right_up = Vector2::new(right_bottom.x, left_up.y);
         let left_bottom = Vector2::new(left_up.x, right_bottom.y);
-        let pos = [
-            left_up,
-            right_up,
-            left_bottom,
-            right_bottom,
-        ];
+        let pos = [left_up, right_up, left_bottom, right_bottom];
         let tcs = &tex;
         let c = TextureObjectVertex::new;
         Self {
@@ -170,9 +165,9 @@ impl TextureRenderer {
                 buffers: &[TextureObjectVertex::desc()],
             },
             primitive: PrimitiveState {
-                topology: PrimitiveTopology::TriangleList,
+                topology: PrimitiveTopology::TriangleStrip,
                 cull_mode: None,
-                strip_index_format: None,
+                strip_index_format: Some(IndexFormat::Uint16),
                 ..Default::default()
             },
             depth_stencil: None,
@@ -253,7 +248,7 @@ impl TextureRenderer {
             rp.set_bind_group(2, tint_bg, &[]);
             rp.set_index_buffer(srd.rect_index_buffer.slice(..), IndexFormat::Uint16);
             rp.set_vertex_buffer(0, self.stream_draw_vertex_buffer.slice(..));
-            rp.draw_indexed(0..(x.len() * 6) as u32, 0, 0..1);
+            rp.draw_indexed(0..(x.len() * 5) as u32, 0, 0..1);
         }
     }
 }

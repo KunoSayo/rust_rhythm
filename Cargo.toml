@@ -34,6 +34,7 @@ futures = { version = "0.3.24", features = ["executor", "thread-pool"] }
 # audio
 rodio = "0.20.1"
 cpal = "0.15.3"
+rubato = { version = "0.16.1" }
 
 # functions
 toml_edit = "0.22.13"

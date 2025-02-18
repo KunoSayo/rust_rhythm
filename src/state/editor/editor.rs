@@ -1,5 +1,5 @@
 use crate::engine::global::{IO_POOL, STATIC_DATA};
-use crate::engine::{get_edit_cache, GameState, LoopState, StateData, Trans};
+use crate::engine::{get_edit_cache, sample_change_speed, GameState, LoopState, StateData, Trans};
 use crate::game::beatmap::file::SongBeatmapFile;
 use crate::game::beatmap::{SongBeatmapInfo, BEATMAP_EXT};
 use crate::game::song::{SongInfo, SongManagerResourceType};
@@ -7,26 +7,50 @@ use crate::game::timing::TimingGroupBeatIterator;
 use crate::game::{secs_to_offset_type, OffsetType};
 use crate::state::editor::note_editor::{BeatmapEditorData, PointerType};
 use anyhow::anyhow;
-use egui::epaint::PathStroke;
 use egui::panel::TopBottomSide;
 use egui::{
     Align, Button, Color32, Context, Frame, Layout, NumExt, Pos2, Rect, Sense, Stroke, TextEdit,
     TextStyle, Ui, UiBuilder, Vec2,
 };
+use rodio::buffer::SamplesBuffer;
 use rodio::{Decoder, OutputStreamHandle, Sink, Source};
 use std::io::{Cursor, Read};
-use std::ops::{Add, ControlFlow, Deref, Mul};
+use std::ops::{Add, ControlFlow, Deref, Div, Mul};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicI16, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
 pub struct SongSampleInfo {
-    raw_data: Cursor<Vec<u8>>,
     samples: Vec<i16>,
+    samples_q: Vec<i16>,
+    samples_half: Vec<i16>,
+    samples_t_f: Vec<i16>,
     sample_rate: u32,
     channels: u16,
+}
+
+impl SongSampleInfo {
+    pub fn new(samples: Vec<i16>, rate: u32, channels: u16) -> Self {
+        use rayon::prelude::*;
+        let result = [0.25, 0.5, 0.75]
+            .into_par_iter()
+            .map(|x| sample_change_speed(&samples, channels as usize, x))
+            .collect::<Vec<_>>();
+        let mut it = result.into_iter();
+        let samples_q = it.next().unwrap();
+        let samples_half = it.next().unwrap();
+        let samples_t_f = it.next().unwrap();
+        Self {
+            samples,
+            samples_q,
+            samples_half,
+            samples_t_f,
+            sample_rate: rate,
+            channels,
+        }
+    }
 }
 
 #[derive(Copy, Clone, Eq, PartialEq)]
@@ -48,6 +72,7 @@ pub struct BeatMapEditor {
 
     current_editor: SubEditor,
     pub dirty: bool,
+    play_speed: f32,
 }
 
 pub(in crate::state::editor) struct InputCache {
@@ -61,8 +86,8 @@ pub(in crate::state::editor) struct InputCache {
     pub(in crate::state::editor) note_width: f32,
 }
 
-impl Default for InputCache {
-    fn default() -> Self {
+impl InputCache {
+    fn new(beatmap: &SongBeatmapFile) -> Self {
         Self {
             escape_time: 0.0,
             detail: 1,
@@ -70,7 +95,7 @@ impl Default for InputCache {
             progress_half_time: 0.5,
             select_timing_group: 0,
             select_timing_row: None,
-            edit_data: Default::default(),
+            edit_data: BeatmapEditorData::new(beatmap),
             note_width: 0.25,
         }
     }
@@ -118,28 +143,26 @@ impl BeatMapEditor {
             let sample_rate = decoder.sample_rate();
             let channels = decoder.channels();
             let samples = decoder.convert_samples::<i16>().collect();
-            SongSampleInfo {
-                raw_data: buf,
-                samples,
-                sample_rate,
-                channels,
-            }
+            SongSampleInfo::new(samples, sample_rate, channels)
         };
 
         let dirty = info.is_none();
         let current_editor = SubEditor::Timing;
+        let beatmap = info
+            .map(|x| x.song_beatmap_file)
+            .unwrap_or(SongBeatmapFile::new(song_info.title.clone()));
+        let input_cache = InputCache::new(&beatmap);
         Ok(Self {
-            beatmap: info
-                .map(|x| x.song_beatmap_file)
-                .unwrap_or(SongBeatmapFile::new(song_info.title.clone())),
+            beatmap,
             song_info,
             sink,
             save_path: path,
             total_duration,
-            input_cache: Default::default(),
+            input_cache,
             sample_info,
             current_editor,
             dirty,
+            play_speed: 1.0,
         })
     }
 
@@ -162,6 +185,23 @@ impl BeatMapEditor {
             )
         });
         let path = path.clone();
+
+        {
+            // deal notes
+            self.beatmap.normal_notes.clear();
+            self.input_cache
+                .edit_data
+                .normal_notes
+                .iter()
+                .for_each(|x| self.beatmap.normal_notes.extend_from_slice(&x.1));
+
+            self.beatmap.long_notes.clear();
+            self.input_cache
+                .edit_data
+                .long_notes
+                .iter()
+                .for_each(|x| self.beatmap.long_notes.extend_from_slice(&x.1));
+        }
         let beatmap = self.beatmap.clone();
         let info = self.song_info.clone();
         let song_manager =
@@ -305,10 +345,22 @@ impl GameState for BeatMapEditor {
 }
 
 impl BeatMapEditor {
+    /// Get the position in game progress
     fn get_progress(&self) -> Duration {
         let dur = self.sink.get_pos();
-        dur.mul((1.0 / self.sink.speed()) as u32)
+        dur.div((1.0 / self.play_speed) as u32)
             .min(self.total_duration)
+    }
+
+    /// The pos in game pos
+    fn seek_to(&self, pos: Duration) {
+        if self.play_speed != 1.0 {
+            self.sink
+                .try_seek(pos.mul((1.0 / self.play_speed) as u32))
+                .expect("Failed to seek");
+        } else {
+            self.sink.try_seek(pos).expect("Failed to seek");
+        }
     }
 
     pub(crate) fn get_beat_iter(&self, secs: f32) -> TimingGroupBeatIterator {
@@ -319,16 +371,27 @@ impl BeatMapEditor {
         )
     }
 
-    fn set_speed(&self, speed: f32) {
-        let old_dur = self.sink.get_pos();
-        let old_speed = self.sink.speed();
-        self.sink.set_speed(speed);
+    fn set_speed(&mut self, speed: f32) {
+        let old_speed = self.play_speed;
+        let playing = !self.sink.is_paused();
+        if old_speed != speed {
+            let pos = self.get_progress();
+            self.sink.clear();
+            self.play_speed = speed;
+            self.check_sink();
+            self.seek_to(pos);
+            if playing {
+                self.sink.play();
+            }
+        }
+
+        // self.sink.set_speed(speed);
 
         // speed 1 -> 2
         // duration 30s -> 15s
-        self.sink
-            .try_seek(old_dur.mul_f32(old_speed / speed))
-            .expect("Failed to fix duration");
+        // self.sink
+        //     .try_seek(old_dur.mul_f32(old_speed / speed))
+        //     .expect("Failed to fix duration");
     }
 
     fn render_top_panel(&mut self, s: &mut StateData, ctx: &Context) {
@@ -619,7 +682,7 @@ impl BeatMapEditor {
                                 cache.edit(&progress_str, ID);
                             } else if response.lost_focus() {
                                 if let Some(dur) = get_duration_from_str(&cache.text) {
-                                    self.sink.try_seek(dur).expect("Failed to seek");
+                                    self.seek_to(dur);
                                 }
                                 cache.release();
                             }
@@ -684,9 +747,7 @@ impl BeatMapEditor {
 
                                 let dest_duration = self.total_duration.mul_f32(drag_progress);
 
-                                self.sink
-                                    .try_seek(dest_duration.mul_f32(1.0 / self.sink.speed()))
-                                    .expect("Failed to seek");
+                                self.seek_to(dest_duration);
                             }
                         } else if response.contains_pointer() {
                             self.scroll_beat(ui);
@@ -735,13 +796,54 @@ impl BeatMapEditor {
     }
 
     fn check_sink(&self) {
+        let start_time = Instant::now();
         if self.sink.empty() {
-            let decoder =
-                Decoder::new(self.sample_info.raw_data.clone()).expect("We should not failed");
+            let speed = self.play_speed;
 
-            let samples = decoder.convert_samples::<f32>();
+            match speed {
+                0.25 => {
+                    let samples = SamplesBuffer::new(
+                        self.sample_info.channels,
+                        self.sample_info.sample_rate,
+                        self.sample_info.samples_q.clone(),
+                    );
 
-            self.sink.append(samples);
+                    self.sink.append(samples);
+                }
+                0.5 => {
+                    let samples = SamplesBuffer::new(
+                        self.sample_info.channels,
+                        self.sample_info.sample_rate,
+                        self.sample_info.samples_half.clone(),
+                    );
+                    self.sink.append(samples);
+                }
+                0.75 => {
+                    let samples = SamplesBuffer::new(
+                        self.sample_info.channels,
+                        self.sample_info.sample_rate,
+                        self.sample_info.samples_t_f.clone(),
+                    );
+
+                    self.sink.append(samples);
+                }
+                _ => {
+                    let samples = SamplesBuffer::new(
+                        self.sample_info.channels,
+                        self.sample_info.sample_rate,
+                        self.sample_info.samples.clone(),
+                    );
+                    log::info!("Reuse raw samples");
+
+                    self.sink.append(samples);
+                }
+            }
+
+            log::info!(
+                "Checked sink and re append buffer in {}s with speed {}",
+                start_time.elapsed().as_secs_f64(),
+                self.play_speed
+            );
         }
     }
 
@@ -778,11 +880,7 @@ impl BeatMapEditor {
             }
             .clamp(0, self.total_duration.as_millis() as OffsetType);
 
-            self.sink
-                .try_seek(
-                    Duration::from_millis(dest_time as u64).mul((1.0 / self.sink.speed()) as u32),
-                )
-                .expect("Failed to seek");
+            self.seek_to(Duration::from_millis(dest_time as u64));
         });
     }
 }

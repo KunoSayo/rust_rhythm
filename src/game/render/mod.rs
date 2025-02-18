@@ -2,7 +2,7 @@ use crate::engine::renderer::texture_renderer::{FragUniform, TextureObject, Text
 use crate::engine::uniform::{create_static_uniform_buffer, uniform_bind_buffer_entry};
 use crate::engine::{MainRendererData, ResourceLocation, ResourceManager, WgpuData};
 use crate::game::note::consts::NOTE_HEIGHT_PIXEL;
-use crate::game::note::Note;
+use crate::game::note::{Note, NoteHitType};
 use egui::Rect;
 use nalgebra::{Vector2, Vector4};
 use std::iter::once;
@@ -14,6 +14,10 @@ use wgpu::{
 pub struct NoteRenderDesc {
     // Left, Middle, Right
     pub tex_coords: [[Vector2<f32>; 4]; 3],
+    pub slide_coords: [[Vector2<f32>; 4]; 3],
+    // [[Left, Middle, Right]; top, mid, bottom]
+    // [top/mid/bottom][left/mid/right]
+    pub long_coords: [[[Vector2<f32>; 4]; 3]; 3],
     pub left_pixel: u32,
     pub right_pixel: u32,
     /// Half height in pixel
@@ -21,47 +25,130 @@ pub struct NoteRenderDesc {
 }
 
 impl NoteRenderDesc {
-    pub fn get_note_render_obj<T: Note>(
+    fn get_obj(
         &self,
+        left_x: f32,
+        right_x: f32,
+        up: f32,
+        down: f32,
         viewport_size: (f32, f32),
-        note_center_y: f32,
-        note: &T,
-        mut consume: impl FnMut(TextureObject),
+        tex_coords: &[[Vector2<f32>; 4]; 3],
+        consume: &mut impl FnMut(TextureObject),
     ) {
-        let left_x = note.get_x() - note.get_width() / 2.0;
-        let right_x = note.get_x() + note.get_width() / 2.0;
         let left_side_right_x = left_x + (self.left_pixel as f32) * 2.0 / viewport_size.0;
         let right_side_left_x = right_x - (self.right_pixel as f32) * 2.0 / viewport_size.0;
-        let up = note_center_y + self.note_half_height * 2.0 / viewport_size.1;
-        let down = note_center_y - self.note_half_height * 2.0 / viewport_size.1;
 
         // eprintln!("Got note situation: {} {} {} {} and up down {} {}", left_x, left_side_right_x, right_side_left_x, right_x, up, down);
 
         consume(TextureObject::new_rect(
             Vector2::new(left_x, up),
             Vector2::new(left_side_right_x, down),
-            &self.tex_coords[0],
+            &tex_coords[0],
         ));
         consume(TextureObject::new_rect(
             Vector2::new(left_side_right_x, up),
             Vector2::new(right_side_left_x, down),
-            &self.tex_coords[1],
+            &tex_coords[1],
         ));
         consume(TextureObject::new_rect(
             Vector2::new(right_side_left_x, up),
             Vector2::new(right_x, down),
-            &self.tex_coords[2],
+            &tex_coords[2],
         ));
+    }
+
+    /// `start_secs`: The time for y = 0  
+    /// `time_scale`: the y delta if time delta is 1.0s
+    pub fn get_note_render_obj<T: Note>(
+        &self,
+        viewport_size: (f32, f32),
+        center_secs: f32,
+        time_scale: f32,
+        note: &T,
+        mut consume: impl FnMut(TextureObject),
+    ) {
+        let left_x = note.get_x() - note.get_width() / 2.0;
+        let right_x = note.get_x() + note.get_width() / 2.0;
+
+        let center_y = ((note.get_time() as f32 / 1000.0) - center_secs) * time_scale;
+        if let Some(et) = note.get_end_time() {
+            let up = center_y + self.note_half_height * 2.0 / viewport_size.1;
+            let down = center_y - self.note_half_height * 2.0 / viewport_size.1;
+            let mid_down = up;
+            self.get_obj(
+                left_x,
+                right_x,
+                up,
+                down,
+                viewport_size,
+                &self.long_coords[2],
+                &mut consume,
+            );
+            let center_y = ((et as f32 / 1000.0) - center_secs) * time_scale;
+            let up = center_y + self.note_half_height * 2.0 / viewport_size.1;
+            let down = center_y - self.note_half_height * 2.0 / viewport_size.1;
+            let mid_up = down;
+            self.get_obj(
+                left_x,
+                right_x,
+                up,
+                down,
+                viewport_size,
+                &self.long_coords[0],
+                &mut consume,
+            );
+
+            self.get_obj(
+                left_x,
+                right_x,
+                mid_up,
+                mid_down,
+                viewport_size,
+                &self.long_coords[1],
+                &mut consume,
+            );
+        } else {
+            let up = center_y + self.note_half_height * 2.0 / viewport_size.1;
+            let down = center_y - self.note_half_height * 2.0 / viewport_size.1;
+            match note.get_note_type() {
+                NoteHitType::Click => {
+                    self.get_obj(
+                        left_x,
+                        right_x,
+                        up,
+                        down,
+                        viewport_size,
+                        &self.tex_coords,
+                        &mut consume,
+                    );
+                }
+                NoteHitType::Slide => {
+                    self.get_obj(
+                        left_x,
+                        right_x,
+                        up,
+                        down,
+                        viewport_size,
+                        &self.slide_coords,
+                        &mut consume,
+                    );
+                }
+            }
+        }
     }
 
     pub fn new(
         tex_coords: [[Vector2<f32>; 4]; 3],
+        slide_coords: [[Vector2<f32>; 4]; 3],
+        long_coords: [[[Vector2<f32>; 4]; 3]; 3],
         left_pixel: u32,
         right_pixel: u32,
         note_half_height: f32,
     ) -> Self {
         Self {
             tex_coords,
+            slide_coords,
+            long_coords,
             left_pixel,
             right_pixel,
             note_half_height,
@@ -73,7 +160,7 @@ pub struct NoteRenderer {
     pub gray_tint_buffer: Buffer,
     pub gray_tint_bg: BindGroup,
     pub atlas_group: BindGroup,
-    pub normal_note: NoteRenderDesc,
+    pub note_desc: NoteRenderDesc,
     pub objs: Vec<TextureObject>,
     pub background_objs: Vec<TextureObject>,
 }
@@ -148,12 +235,18 @@ impl NoteRenderer {
         let normal_tex_coords = atlas
             .get_tex_coord_left_right_slice(&ResourceLocation::from_name("note"), 16.0, 16.0)
             .expect("Failed to get normal note tex coords");
+
+        // todo: long texture.
+        let long_coords = Default::default();
+        let slide_coords = Default::default();
         Self {
             gray_tint_buffer,
             gray_tint_bg,
             atlas_group,
-            normal_note: NoteRenderDesc {
+            note_desc: NoteRenderDesc {
                 tex_coords: normal_tex_coords,
+                slide_coords,
+                long_coords,
                 left_pixel: 16,
                 right_pixel: 16,
                 note_half_height: NOTE_HEIGHT_PIXEL / 2.0,
