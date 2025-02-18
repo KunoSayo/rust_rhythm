@@ -466,7 +466,7 @@ impl BeatMapEditor {
                 let center_y = start_point.y + height * 0.5;
                 let half_height = height * 0.5;
 
-                vec.par_iter_mut()
+                vec.iter_mut()
                     .enumerate()
                     .for_each(|(offset, (mn, mx))| {
                         let high = *mx.get_mut() as f32 / mx_val;

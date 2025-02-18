@@ -279,13 +279,14 @@ impl WindowInstance {
                 for (id, delta) in &full_output.textures_delta.set {
                     egui_renderer.update_texture(device, queue, *id, &delta);
                 }
-                egui_renderer.update_buffers(
+                let buffer = egui_renderer.update_buffers(
                     &device,
                     &queue,
                     &mut encoder,
                     &paint_jobs,
                     &screen_descriptor,
                 );
+                queue.submit(buffer);
                 {
                     let mut rp = encoder
                         .begin_render_pass(&RenderPassDescriptor {
