@@ -163,6 +163,8 @@ impl GameState for BeatMapEditor {
         {
             self.switch_play();
         }
+        
+        s.app.window.set_title(&format!("{}{}", &self.beatmap.metadata.title, [""," *"][self.dirty as usize]));
 
         let cur_input = &s.app.inputs.cur_frame_input;
         if cur_input
@@ -276,7 +278,7 @@ impl BeatMapEditor {
     fn render_top_panel(&mut self, s: &mut StateData, ctx: &Context) {
         let height = 36.0;
         egui::TopBottomPanel::new(TopBottomSide::Top, "editor_top_menu")
-            .frame(Frame::none())
+            .frame(Frame::NONE)
             .min_height(height)
             .show(ctx, |ui| {
                 let width = ui.available_width();

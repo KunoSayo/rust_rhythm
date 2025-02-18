@@ -4,7 +4,7 @@ mod timing_editor;
 mod settings_editor;
 mod note_editor;
 
-use crate::engine::{GameState, LoopState, StateData, Trans, WaitFutureState, WaitResult};
+use crate::engine::{GameState, LoopState, StateData, StateEvent, Trans, WaitFutureState, WaitResult};
 use crate::game::song::{SongManager, SongManagerResourceType};
 use crate::state::editor::editor::BeatMapEditor;
 use crate::ui::song_list::SongListUi;
@@ -133,5 +133,14 @@ impl GameState for EditorMenu {
             });
 
         tran
+    }
+
+    fn on_event(&mut self, s: &mut StateData, event: StateEvent) {
+        match event {
+            StateEvent::Resume => {
+                s.app.window.set_title("Rust Rhythm");
+            }
+            _ => {}
+        }
     }
 }

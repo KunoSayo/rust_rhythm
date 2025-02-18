@@ -179,6 +179,9 @@ impl WindowInstance {
             Trans::Pop => {
                 last.stop(&mut state_data);
                 self.states.pop().unwrap();
+                if let Some(state) = self.states.last_mut() {
+                    state.on_event(&mut state_data, StateEvent::Resume);
+                }
             }
             Trans::Switch(x) => {
                 last.stop(&mut state_data);

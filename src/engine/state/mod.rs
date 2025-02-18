@@ -35,6 +35,7 @@ pub enum Trans {
 pub enum StateEvent<'a> {
     ReloadGPU,
     PostUiRender,
+    Resume,
     Window(&'a WindowEvent),
 }
 
