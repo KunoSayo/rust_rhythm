@@ -1018,9 +1018,11 @@ impl AsyncWindowManagerInner {
         wm.on_about_to_wait(&self);
 
         while !self.exiting.get() {
-            let mut should_try_recv = Cell::new(false);
+            // 0 for uninit
+            let mut should_try_recv = Cell::new(0);
 
             let mut s_msg = None;
+            let mut already_draw = RefCell::new(HashSet::new());
             let start_cause = match self.cf.get() {
                 ControlFlow::Poll => {
                     if let Ok(msg) = self.recv.try_recv() {
@@ -1073,26 +1075,34 @@ impl AsyncWindowManagerInner {
 
             let mut process_msg = |msg| match msg {
                 LoopMessage::WindowEvent(id, e, t) => {
-                    wm.on_window_event(&self, id, e, t);
+                    if matches!(e, WindowEvent::RedrawRequested) {
+                        if already_draw.borrow_mut().insert(id) {
+                            wm.on_window_event(&self, id, e, t);
+                        }
+                    } else {
+                        wm.on_window_event(&self, id, e, t);
+                    }
                 }
                 LoopMessage::UserEvent(event) => {
                     wm.on_user_event(&self, event);
                 }
                 LoopMessage::NewLoop(l) => {
-                    should_try_recv.set(true);
+                    if should_try_recv.get() == 0 {
+                        should_try_recv.set(1);
+                    }
                 }
                 LoopMessage::Resumed => {
                     wm.on_resumed(&self);
                 }
                 LoopMessage::AboutToWait => {
-                    should_try_recv.set(false);
+                    should_try_recv.set(-1);
                 }
             };
             if let Some(msg) = s_msg {
                 process_msg(msg);
             }
 
-            'l: while should_try_recv.get() {
+            'l: while should_try_recv.get() == 1 {
                 while let Ok(msg) = self.recv.try_recv() {
                     process_msg(msg);
                 }

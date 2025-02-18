@@ -148,6 +148,7 @@ impl BeatMapEditor {
             timing_group: 0,
         };
         let nr = s.app.world.get_mut::<NoteRenderer>().unwrap();
+        println!("Render note at {}", note.x);
         nr.normal_note.get_note_render_obj((game_rect.width(), game_rect.height()), note_center_y, &note, |obj| {
             nr.background_objs.push(obj)
         });

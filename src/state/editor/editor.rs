@@ -468,7 +468,7 @@ impl BeatMapEditor {
 
                 
                 // Render the wave.
-                if false {
+                if true {
                     vec.iter_mut()
                         .enumerate()
                         .for_each(|(offset, (mn, mx))| {
