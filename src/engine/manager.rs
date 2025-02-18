@@ -14,7 +14,7 @@ use std::future::Future;
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::sync::atomic::AtomicBool;
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{channel, sync_channel, Receiver, Sender, SyncSender};
 use std::task::Poll;
 use std::thread::JoinHandle;
 use std::time::Instant;
@@ -1194,7 +1194,7 @@ impl<'a, T: EngineEventLoopProxy, R: Send + 'static> EngineEventLoopProxyExt<'a,
 
 pub struct AsyncWindowManager {
     /// The sender to run
-    sender: Sender<LoopMessage>,
+    sender: SyncSender<LoopMessage>,
     rx: Receiver<ToLoopMessage>,
     handle: JoinHandle<()>,
 }
@@ -1217,7 +1217,7 @@ impl AsyncWindowManager {
         start: impl GameState + Send,
     ) -> anyhow::Result<Self> {
         let elp = el.create_proxy();
-        let (tx, rx) = channel();
+        let (tx, rx) = sync_channel(1024);
         let (ttx, trx) = channel();
         let handle = std::thread::Builder::new()
             .name("App Thread".to_string())
