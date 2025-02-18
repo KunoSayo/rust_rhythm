@@ -1,4 +1,4 @@
-use crate::game::beatmap::file::SongBeatmapFile;
+use crate::game::beatmap::file::{de_from_ron, SongBeatmapFile};
 use crate::game::beatmap::{SongBeatmapInfo, BEATMAP_EXT};
 use anyhow::anyhow;
 use dashmap::DashMap;
@@ -74,8 +74,7 @@ impl SongInfo {
             })
             .map(|entry| -> anyhow::Result<SongBeatmapInfo> {
                 let data = std::fs::read(entry.path())?;
-                let deserializer = &mut ron::Deserializer::from_bytes(&data[..])?;
-                let beatmap = SongBeatmapFile::deserialize(deserializer)?;
+                let beatmap = de_from_ron(&data)?;
                 let info = SongBeatmapInfo {
                     file_path: entry.path(),
                     song_beatmap_file: beatmap,

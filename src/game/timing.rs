@@ -1,21 +1,39 @@
 use crate::game::OffsetType;
 use egui::{Color32, NumExt};
-use num::CheckedAdd;
+use ron::extensions::Extensions;
+use ron::Options;
 use serde::{Deserialize, Serialize};
 use std::convert::Into;
 use std::fmt::{Display, Formatter};
 use std::num::NonZeroU8;
 use std::str::FromStr;
 
-// Store bpm with 100 times
-#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+/// Store bpm with 100 times
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[repr(transparent)]
 pub struct Bpm(i32);
+
+pub fn get_ron_options() -> Options {
+    Options::default().with_default_extension(Extensions::all())
+}
+
+pub fn get_ron_options_for_implicit_some() -> Options {
+    Options::default().with_default_extension(Extensions::IMPLICIT_SOME)
+}
+
+
 
 impl From<f32> for Bpm {
     fn from(value: f32) -> Self {
         Self {
             0: (value * 100.0).round().at_least(1.0) as i32,
         }
+    }
+}
+
+impl Default for Bpm {
+    fn default() -> Self {
+        Self::from(60.0)
     }
 }
 
@@ -58,7 +76,6 @@ pub struct Beat {
     pub index: u8,
     pub detail: u8,
     pub is_measure: bool,
-    
 }
 
 impl Beat {
@@ -74,7 +91,7 @@ impl Beat {
 
             Color32::DARK_RED
         };
-        
+
         color
     }
 }
@@ -83,17 +100,31 @@ impl Beat {
 /// Reset bpm or
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Timing {
-    pub bpm: Bpm,
+    /// The bpm set by this timing
+    #[serde(skip_serializing_if = "Option::is_none", default, rename = "bpm")]
+    pub set_bpm: Option<Bpm>,
+    /// The speed set by this timing
+    #[serde(skip_serializing_if = "Option::is_none", default, rename = "speed")]
+    pub set_speed: Option<f32>,
     pub offset: OffsetType,
     pub time_signature: NonZeroU8,
+    #[serde(skip)]
+    /// The bpm extended from last timing or this timing
+    pub bpm: Bpm,
+    /// The speed extended from last timing or this timing
+    #[serde(skip)]
+    pub speed: f32,
 }
 pub const DEFAULT_TIMING: Timing = Timing {
-    bpm: Bpm(60 * 100),
+    set_bpm: Some(Bpm(60 * 100)),
+    set_speed: Some(1.0),
     offset: 0,
     time_signature: match NonZeroU8::new(4) {
         Some(e) => e,
         None => unreachable!(),
     },
+    bpm: Bpm(60 * 100),
+    speed: 1.0,
 };
 
 impl Default for Timing {
@@ -196,11 +227,15 @@ impl Timing {
         }
     }
 
+    /// Create timing set bpm.
     pub fn new(bpm: Bpm, offset: OffsetType, time_signature: NonZeroU8) -> Self {
         Self {
+            set_bpm: Some(bpm),
             bpm,
             offset,
             time_signature,
+            set_speed: None,
+            speed: 1.0,
         }
     }
 }
@@ -323,8 +358,9 @@ impl<'a> Iterator for TimingGroupBeatIterator<'a> {
                 let next_beat = self.last_timing[0].get_next_beat_by_beat(&beat, self.detail);
                 if self.last_timing.len() > 1 && next_beat.time >= self.last_timing[1].offset {
                     self.last_timing = &self.last_timing[1..];
-                    
-                    let beat = self.last_timing[0].get_left_beat(self.last_timing[0].offset, self.detail);
+
+                    let beat =
+                        self.last_timing[0].get_left_beat(self.last_timing[0].offset, self.detail);
                     beat
                 } else {
                     next_beat
@@ -479,5 +515,4 @@ mod test {
             );
         }
     }
-    
 }

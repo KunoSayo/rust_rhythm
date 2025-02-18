@@ -3233,6 +3233,7 @@ dependencies = [
  "rodio",
  "ron",
  "serde",
+ "serde_repr",
  "single_thread_cell",
  "specs",
  "tokio",

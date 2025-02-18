@@ -1,8 +1,10 @@
 use crate::game::beatmap::MapRule;
 use crate::game::note::{LongNote, NormalNote};
-use crate::game::timing::TimingGroup;
+use crate::game::timing::{get_ron_options, get_ron_options_for_implicit_some, TimingGroup};
+use anyhow::anyhow;
 use ron::ser::PrettyConfig;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::io;
 use std::path::Path;
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -14,12 +16,14 @@ pub struct BeatmapMetadata {
     pub source: String,
     // Comma split tags
     pub tags: String,
-
 }
 
 impl BeatmapMetadata {
     pub fn new(title: String) -> Self {
-        Self { title, ..Default::default() }
+        Self {
+            title,
+            ..Default::default()
+        }
     }
 }
 
@@ -36,7 +40,6 @@ pub struct SongBeatmapFile {
     pub rule: MapRule,
 }
 
-
 impl SongBeatmapFile {
     pub(crate) fn get_show_name(&self) -> String {
         format!("{}[{}]", self.metadata.title, self.metadata.version)
@@ -48,9 +51,7 @@ impl SongBeatmapFile {
             .write(true)
             .truncate(true)
             .open(path)?;
-        let mut s = ron::Serializer::new(file, Some(PrettyConfig::default()))?;
-        self.serialize(&mut s)?;
-
+        ser_to_ron(&self, file, Some(PrettyConfig::default()))?;
 
         Ok(())
     }
@@ -67,7 +68,40 @@ impl SongBeatmapFile {
     }
 }
 
+pub fn ser_to_ron<T: Serialize>(
+    data: &T,
+    writer: impl io::Write,
+    cfg: Option<PrettyConfig>,
+) -> anyhow::Result<()> {
+    let mut s = ron::Serializer::with_options(writer, cfg, get_ron_options())?;
+    data.serialize(&mut s)?;
+    Ok(())
+}
 
-
-
-
+pub fn de_from_ron<'a, T: Deserialize<'a>>(data: &'a [u8]) -> anyhow::Result<T> {
+    let err;
+    match ron::Deserializer::from_bytes_with_options(data, get_ron_options()) {
+        Ok(ref mut der) => match T::deserialize(der) {
+            Ok(result) => return Ok(result),
+            Err(e) => {
+                err = Some(anyhow!(e));
+            }
+        },
+        Err(e) => {
+            err = Some(anyhow!(e));
+        }
+    }
+    if let Ok(ref mut der) =
+        ron::Deserializer::from_bytes_with_options(data, get_ron_options_for_implicit_some())
+    {
+        if let Ok(v) = T::deserialize(der) {
+            return Ok(v);
+        }
+    }
+    if let Ok(ref mut der) = ron::Deserializer::from_bytes(data) {
+        if let Ok(v) = T::deserialize(der) {
+            return Ok(v);
+        }
+    }
+    Err(err.unwrap())
+}
