@@ -72,6 +72,8 @@ pub struct BeatMapEditor {
 
     current_editor: SubEditor,
     pub dirty: bool,
+    /// allow update by input this render, for we may skip update due to some cases.
+    pub allow_update: bool,
     play_speed: f32,
 }
 
@@ -162,6 +164,7 @@ impl BeatMapEditor {
             sample_info,
             current_editor,
             dirty,
+            allow_update: false,
             play_speed: 1.0,
         })
     }
@@ -240,6 +243,7 @@ impl GameState for BeatMapEditor {
     }
 
     fn update(&mut self, s: &mut StateData) -> (Trans, LoopState) {
+        self.allow_update = true;
         self.check_sink();
         let mut tran = Trans::None;
         self.input_cache.current_duration = self.get_progress();
@@ -275,21 +279,28 @@ impl GameState for BeatMapEditor {
                     .inputs
                     .is_pressed(&[PhysicalKey::Code(KeyCode::Digit1)])
                 {
-                    data.pointer_type = PointerType::Select(None);
+                    data.cursor = PointerType::Select(None);
                 }
                 if s.app
                     .inputs
                     .is_pressed(&[PhysicalKey::Code(KeyCode::Digit2)])
                 {
-                    data.pointer_type = PointerType::NormalNote;
+                    data.cursor = PointerType::NormalNote;
                 }
                 if s.app
                     .inputs
                     .is_pressed(&[PhysicalKey::Code(KeyCode::Digit3)])
                 {
-                    data.pointer_type = PointerType::LongNote(None);
+                    data.cursor = PointerType::LongNote(None);
                 }
             }
+        }
+
+        match self.current_editor {
+            SubEditor::Note => {
+                self.update_note_editor(s);
+            }
+            _ => {}
         }
 
         let cur_input = &s.app.inputs.cur_frame_input;
@@ -335,6 +346,7 @@ impl GameState for BeatMapEditor {
             ["", " *"][self.dirty as usize]
         ));
 
+        self.allow_update = false;
         tran
     }
 
