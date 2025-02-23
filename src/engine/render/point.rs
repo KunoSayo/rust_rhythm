@@ -93,7 +93,7 @@ impl PointRenderer {
     }
 
     pub fn render<'a>(&'a self, window: &AppInstance, render_target: &TextureView, points: &[PointVertexData]) {
-        let gpu = if let Some(state) = &window.gpu { state } else { return; };
+        let gpu = match &window.gpu { Some(state) => { state } _ => { return; }};
         profiling::scope!("Point Renderer");
         let rp_attach = [Some(RenderPassColorAttachment {
             view: render_target,

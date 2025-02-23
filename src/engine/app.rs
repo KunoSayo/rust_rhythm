@@ -28,11 +28,11 @@ pub struct AppInstance {
 impl AppInstance {
     fn new_with_gpu(window: Window, gpu: Option<WgpuData>) -> anyhow::Result<Self> {
         let res = ResourceManager::new()?;
-        let render = if let Some(gpu) = &gpu {
+        let render = match &gpu { Some(gpu) => {
             Some(MainRendererData::new(gpu, &res))
-        } else {
+        } _ => {
             None
-        };
+        }};
         info!("Got the lua");
         let egui_ctx = Context::default();
         info!("Got the egui context");

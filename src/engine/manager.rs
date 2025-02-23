@@ -133,7 +133,7 @@ impl WindowInstance {
 }
 /// put app and el here
 macro_rules! get_state {
-    ($app: expr, $el: expr) => {{
+    ($app: expr_2021, $el: expr_2021) => {{
         crate::engine::state::StateData {
             app: &mut $app,
             wd: $el,
@@ -204,7 +204,7 @@ impl WindowInstance {
     }
 
     fn render_once(&mut self, el: &mut GlobalData) {
-        if let (Some(gpu),) = (&self.app.gpu,) {
+        match (&self.app.gpu,) { (Some(gpu),) => {
             profiling::scope!("Render once");
             let render_now = Instant::now();
             let render_dur = render_now.duration_since(self.app.last_render_time);
@@ -326,13 +326,13 @@ impl WindowInstance {
 
             // We do get here
 
-            let swap_chain_frame = if let Ok(s) = gpu.surface.get_current_texture() {
+            let swap_chain_frame = match gpu.surface.get_current_texture() { Ok(s) => {
                 s
-            } else {
+            } _ => {
                 // it is normal.
                 log::trace!("Lose swap chain frame!");
                 return;
-            };
+            }};
 
             {
                 let mut encoder = gpu
@@ -378,11 +378,11 @@ impl WindowInstance {
                 .egui
                 .handle_platform_output(&self.app.window, full_output.platform_output);
             self.app.render.as_mut().unwrap().staging_belt.recall();
-        } else {
+        } _ => {
             // no gpu but we need render it...
             // well...
             // no idea.
-        }
+        }}
     }
 
     fn start(&mut self, mut start: Box<dyn GameState>, wd: &mut GlobalData) {
@@ -644,8 +644,8 @@ impl WindowManager {
                         world: &mut self.world,
                     };
                     let WindowInstance {
-                        ref mut app,
-                        ref mut states,
+                        app,
+                        states,
                         ..
                     } = this.deref_mut().deref_mut();
                     let sd = &mut get_state!(*app, &mut gd);
@@ -657,7 +657,7 @@ impl WindowManager {
                 // this.app.egui_ctx = Context::default();
                 let size = this.app.window.inner_size();
                 // this.app.egui_ctx.set_pixels_per_point(this.app.window.scale_factor() as f32);
-                let WindowInstance { ref mut app, .. } = this.deref_mut().deref_mut();
+                let WindowInstance { app, .. } = this.deref_mut().deref_mut();
                 let _ = app
                     .egui
                     .on_window_event(&app.window, &WindowEvent::Resized(size));
@@ -775,8 +775,8 @@ impl WindowManager {
                                 world: &mut self.world,
                             };
                             let WindowInstance {
-                                ref mut app,
-                                ref mut states,
+                                app,
+                                states,
                                 ..
                             } = this.deref_mut().deref_mut();
                             let sd = &mut get_state!(*app, &mut gd);
@@ -788,7 +788,7 @@ impl WindowManager {
                         // this.app.egui_ctx = Context::default();
                         let size = this.app.window.inner_size();
                         // this.app.egui_ctx.set_pixels_per_point(this.app.window.scale_factor() as f32);
-                        let WindowInstance { ref mut app, .. } = this.deref_mut().deref_mut();
+                        let WindowInstance { app, .. } = this.deref_mut().deref_mut();
                         let _ = app
                             .egui
                             .on_window_event(&app.window, &WindowEvent::Resized(size));
@@ -797,7 +797,7 @@ impl WindowManager {
                 self.draw_events += 1;
                 let mut not_running = vec![];
 
-                if let Some(this) = self.windows.get(&window_id) {
+                match self.windows.get(&window_id) { Some(this) => {
                     let mut this = this.borrow_mut();
 
                     'update: {
@@ -834,11 +834,11 @@ impl WindowManager {
                             }
                         }
                     }
-                } else {
+                } _ => {
                     if self.root.map(|id| id == window_id).unwrap_or(false) {
                         event_loop.exit()
                     }
-                }
+                }}
 
                 for id in not_running {
                     self.windows.remove(&id);
@@ -1049,31 +1049,31 @@ impl AsyncWindowManagerInner {
                 ControlFlow::WaitUntil(t) => {
                     let start = Instant::now();
                     if t > start {
-                        if let Ok(msg) = self.recv.recv_timeout(t.duration_since(start)) {
+                        match self.recv.recv_timeout(t.duration_since(start)) { Ok(msg) => {
                             s_msg = Some(msg);
                             StartCause::WaitCancelled {
                                 start,
                                 requested_resume: Some(Instant::now()),
                             }
-                        } else {
+                        } _ => {
                             StartCause::ResumeTimeReached {
                                 start,
                                 requested_resume: Instant::now(),
                             }
-                        }
+                        }}
                     } else {
-                        if let Ok(msg) = self.recv.try_recv() {
+                        match self.recv.try_recv() { Ok(msg) => {
                             s_msg = Some(msg);
                             StartCause::WaitCancelled {
                                 start,
                                 requested_resume: Some(Instant::now()),
                             }
-                        } else {
+                        } _ => {
                             StartCause::ResumeTimeReached {
                                 start,
                                 requested_resume: Instant::now(),
                             }
-                        }
+                        }}
                     }
                 }
             };

@@ -18,9 +18,9 @@ use crate::engine::manager::{EngineEventLoopProxy, EventLoopProxyType, EventLoop
 
 mod wait_future;
 
-pub unsafe fn cast_static<'a, T>(x: &'a T) -> &'static T {
+pub unsafe fn cast_static<'a, T>(x: &'a T) -> &'static T { unsafe {
     std::mem::transmute(x)
-}
+}}
 
 pub enum Trans {
     None,

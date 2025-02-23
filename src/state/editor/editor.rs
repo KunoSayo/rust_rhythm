@@ -213,9 +213,9 @@ impl BeatMapEditor {
                 .deref()
                 .clone();
         // IO_POOL.spawn_ok(async move {
-        if let Err(e) = beatmap.save_to(&path) {
+        match beatmap.save_to(&path) { Err(e) => {
             log::error!("Failed to save beatmap for {:?}", e);
-        } else {
+        } _ => {
             match info.reload() {
                 Ok(new_info) => {
                     song_manager.load_new_info(new_info);
@@ -226,7 +226,7 @@ impl BeatMapEditor {
                     log::error!("Failed to load beatmap for {:?}", e);
                 }
             }
-        }
+        }}
         // });
     }
 }

@@ -105,7 +105,7 @@ impl InvertColorRenderer {
     }
 
     pub fn render<'a>(&'a self, window: &AppInstance, render_target: &TextureView, circles: &[InvertColorCircle]) {
-        let gpu = if let Some(state) = &window.gpu { state } else { return; };
+        let gpu = match &window.gpu { Some(state) => { state } _ => { return; }};
 
         profiling::scope!("Invert Color new encoder");
         let rp_attach = [Some(RenderPassColorAttachment {

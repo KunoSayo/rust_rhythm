@@ -70,7 +70,7 @@ impl GameState for WaitFutureState {
 
     fn update(&mut self, s: &mut StateData) -> (Trans, LoopState) {
         self.check_result();
-        if let Some(thing) = self.result.take() {
+        match self.result.take() { Some(thing) => {
             match thing {
                 WaitResult::Function(f) => {
                     (Trans::Vec(vec![Trans::Pop, f(s)]), LoopState::POLL)
@@ -88,9 +88,9 @@ impl GameState for WaitFutureState {
                     (Trans::Switch(s), LoopState::POLL)
                 }
             }
-        } else {
+        } _ => {
             (Trans::None, LoopState::WAIT_ALL)
-        }
+        }}
     }
 }
 

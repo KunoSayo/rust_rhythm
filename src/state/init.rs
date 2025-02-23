@@ -35,7 +35,7 @@ impl InitState {
 
 impl GameState for InitState {
     fn update(&mut self, s: &mut StateData) -> (Trans, LoopState) {
-        if let Some(gpu) = s.app.gpu.as_ref() {
+        match s.app.gpu.as_ref() { Some(gpu) => {
             let state = self.start_state.take().unwrap();
             let device = gpu.device.clone();
             let queue = gpu.queue.clone();
@@ -56,10 +56,10 @@ impl GameState for InitState {
                 };
                 let song_manager = SongManager::init_manager()
                     .expect("Failed to init song manager");
-                if let Err(e) = task.await {
+                match task.await { Err(e) => {
                     error!("Load failed for {:?}", e);
                     WaitResult::Exit
-                } else {
+                } _ => {
                     WaitResult::Function(Box::new(|s| {
                         s.app.egui_ctx.set_fonts(STATIC_DATA.font.clone());
                         s.wd.world.insert(Arc::new(song_manager));
@@ -70,14 +70,14 @@ impl GameState for InitState {
                         s.app.world.insert(nr);
                         Trans::Switch(state)
                     }))
-                }
+                }}
             }).expect("Spawn init task failed");
 
 
             (Trans::Push(WaitFutureState::from_wait_thing(handle)), LoopState::POLL)
-        } else {
+        } _ => {
             (Trans::None, LoopState::WAIT)
-        }
+        }}
     }
 
     fn on_event(&mut self, s: &mut StateData, e: StateEvent) {
