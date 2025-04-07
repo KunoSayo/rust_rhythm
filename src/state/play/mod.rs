@@ -1,7 +1,10 @@
 mod gaming;
 
-use crate::engine::{GameState, LoopState, StateData, StateEvent, Trans, WaitFutureState, WaitResult};
+use crate::engine::{
+    GameState, LoopState, StateData, StateEvent, Trans, WaitFutureState, WaitResult,
+};
 use crate::game::song::{SongManager, SongManagerResourceType};
+use crate::state::play::gaming::GamingState;
 use crate::ui::song_list::SongListUi;
 use egui::{Align, Context, Frame, Layout, Pos2, Rect, UiBuilder, UiKind, UiStackInfo};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -15,19 +18,25 @@ pub struct PlayMenu {
 
 impl PlayMenu {
     pub fn new() -> Self {
-        Self { ui: Default::default() }
+        Self {
+            ui: Default::default(),
+        }
     }
 
     fn update_ui(&mut self, s: &mut StateData) {
-        let songs = s.wd.world.get_mut::<SongManagerResourceType>().unwrap().songs.iter()
-            .map(|x| x.value().clone())
-            .collect::<Vec<_>>();
+        let songs =
+            s.wd.world
+                .get_mut::<SongManagerResourceType>()
+                .unwrap()
+                .songs
+                .iter()
+                .map(|x| x.value().clone())
+                .collect::<Vec<_>>();
         if !songs.par_iter().any(|x| x.dirty.load(Ordering::Relaxed)) {
             self.ui.update_songs(songs);
         }
     }
 }
-
 
 impl GameState for PlayMenu {
     fn start(&mut self, s: &mut StateData) -> LoopState {
@@ -36,11 +45,19 @@ impl GameState for PlayMenu {
     }
 
     fn update(&mut self, s: &mut StateData) -> (Trans, LoopState) {
-        if self.ui.songs().par_iter().any(|x| x.dirty.load(Ordering::Relaxed)) {
+        if self
+            .ui
+            .songs()
+            .par_iter()
+            .any(|x| x.dirty.load(Ordering::Relaxed))
+        {
             self.update_ui(s);
         }
         let mut tran = Trans::None;
-        if s.app.inputs.is_pressed(&[PhysicalKey::Code(KeyCode::Escape)]) {
+        if s.app
+            .inputs
+            .is_pressed(&[PhysicalKey::Code(KeyCode::Escape)])
+        {
             tran = Trans::Pop;
         }
         (tran, LoopState::WAIT)
@@ -63,8 +80,6 @@ impl GameState for PlayMenu {
                 ui.allocate_new_ui(builder, |ui| {
                     ui.vertical(|ui| {
                         ui.allocate_space((0.0, 100.0).into());
-
-                        
                     });
                 });
 
@@ -80,7 +95,22 @@ impl GameState for PlayMenu {
                     let response = self.ui.ui(ui);
                     if let Some(result) = response.result {
                         if let Some(beatmap) = &result.beatmap {
-                            
+                            let song_info = result.song;
+                            let beatmap = beatmap.song_beatmap_file.clone();
+                            let handle = s.app.audio.as_mut().unwrap().stream_handle.clone();
+                            tran = Trans::Push(WaitFutureState::wait_task(async move {
+                                let state = GamingState::new(handle, &song_info, beatmap);
+                                match state {
+                                    Ok(state) => {
+                                        let state = Box::new(state);
+                                        WaitResult::Push(state)
+                                    }
+                                    Err(e) => {
+                                        log::warn!("Failed to import music for {:?}", e);
+                                        WaitResult::Function(Box::new(|_| Trans::None))
+                                    }
+                                }
+                            }));
                         }
                     }
                 });

@@ -2,7 +2,7 @@
 
 pub mod file;
 mod test;
-mod play;
+pub mod play;
 
 use std::cmp::Ordering;
 use crate::game::beatmap::file::SongBeatmapFile;

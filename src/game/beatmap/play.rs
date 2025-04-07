@@ -201,13 +201,13 @@ impl Gaming {
         }
     }
 
-    pub fn load_game(file: &mut SongBeatmapFile) -> Self {
+    pub fn load_game(mut file: SongBeatmapFile) -> Self {
         file.normal_notes.sort_by_key(|x| x.time);
         file.long_notes.sort_by_key(|x| x.start_time);
         let mut normal_notes = vec![];
         for x in &file.normal_notes {
             if x.timing_group as usize >= normal_notes.len() {
-                normal_notes.resize_with(x.timing_group as usize, || TrackNotes::default());
+                normal_notes.resize_with(x.timing_group as usize + 1, || TrackNotes::default());
             }
             normal_notes[x.timing_group as usize]
                 .pending
@@ -216,7 +216,7 @@ impl Gaming {
         let mut long_notes = vec![];
         for x in &file.long_notes {
             if x.timing_group as usize >= long_notes.len() {
-                long_notes.resize_with(x.timing_group as usize, || TrackNotes::default());
+                long_notes.resize_with(x.timing_group as usize + 1, || TrackNotes::default());
             }
             long_notes[x.timing_group as usize]
                 .pending
