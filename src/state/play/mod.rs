@@ -1,12 +1,7 @@
-mod util;
-mod editor;
-mod timing_editor;
-mod settings_editor;
-mod note_editor;
+mod gaming;
 
 use crate::engine::{GameState, LoopState, StateData, StateEvent, Trans, WaitFutureState, WaitResult};
 use crate::game::song::{SongManager, SongManagerResourceType};
-use crate::state::editor::editor::BeatMapEditor;
 use crate::ui::song_list::SongListUi;
 use egui::{Align, Context, Frame, Layout, Pos2, Rect, UiBuilder, UiKind, UiStackInfo};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -14,11 +9,11 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use winit::keyboard::{KeyCode, PhysicalKey};
 
-pub struct EditorMenu {
+pub struct PlayMenu {
     ui: SongListUi,
 }
 
-impl EditorMenu {
+impl PlayMenu {
     pub fn new() -> Self {
         Self { ui: Default::default() }
     }
@@ -34,7 +29,7 @@ impl EditorMenu {
 }
 
 
-impl GameState for EditorMenu {
+impl GameState for PlayMenu {
     fn start(&mut self, s: &mut StateData) -> LoopState {
         self.update_ui(s);
         LoopState::WAIT
@@ -69,41 +64,7 @@ impl GameState for EditorMenu {
                     ui.vertical(|ui| {
                         ui.allocate_space((0.0, 100.0).into());
 
-                        if ui.button("Music | 音乐").clicked() {
-                            if let Some(music) = util::select_music_file(&s.app.window) {
-                                let song_manager = s.wd.world.get_mut::<Arc<SongManager>>()
-                                    .expect("How can we lost song manager")
-                                    .clone();
-
-                                let handle = s.app.audio.as_ref().unwrap().stream_handle.clone();
-                                tran = Trans::Push(WaitFutureState::wait_task(async move {
-                                    let result = song_manager.import_song(&music);
-                                    match result {
-                                        Ok(e) => {
-                                            let editor = BeatMapEditor::new(e, handle);
-                                            match editor {
-                                                Ok(editor) => {
-                                                    let editor = Box::new(editor);
-                                                    WaitResult::Push(editor)
-                                                }
-                                                Err(e) => {
-                                                    log::warn!("Failed to import music for {:?}", e);
-                                                    WaitResult::Function(Box::new(|_| {
-                                                        Trans::None
-                                                    }))
-                                                }
-                                            }
-                                        }
-                                        Err(e) => {
-                                            log::warn!("Failed to import music for {:?}", e);
-                                            WaitResult::Function(Box::new(|_| {
-                                                Trans::None
-                                            }))
-                                        }
-                                    }
-                                }));
-                            }
-                        }
+                        
                     });
                 });
 
@@ -118,15 +79,8 @@ impl GameState for EditorMenu {
                 ui.allocate_new_ui(builder, |ui| {
                     let response = self.ui.ui(ui);
                     if let Some(result) = response.result {
-                        let editor = BeatMapEditor::with_file(result.song, result.beatmap, s.app.audio.as_ref().unwrap().stream_handle.clone());
-                        match editor {
-                            Ok(editor) => {
-                                let editor = Box::new(editor);
-                                tran = Trans::Push(editor);
-                            }
-                            Err(e) => {
-                                panic!("Failed to open music, maybe error box soon? {}", e);
-                            }
+                        if let Some(beatmap) = &result.beatmap {
+                            
                         }
                     }
                 });
