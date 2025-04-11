@@ -39,8 +39,10 @@ pub trait Note {
 
     // Get the start time
     fn get_time(&self) -> OffsetType;
-    
-    fn get_end_time(&self) -> Option<OffsetType> { None }
+
+    fn get_end_time(&self) -> Option<OffsetType> {
+        None
+    }
 
     fn get_note_type(&self) -> NoteHitType;
 
@@ -97,10 +99,17 @@ impl Note for LongNote {
 
 pub trait NoteExt {
     fn get_end_time_or_time(&self) -> OffsetType;
+
+    fn is_x_in_range(&self, x: f32) -> bool;
 }
 
-impl <T: Note> NoteExt for T {
+impl<T: Note> NoteExt for T {
     fn get_end_time_or_time(&self) -> OffsetType {
         self.get_end_time().unwrap_or(self.get_time())
+    }
+
+    fn is_x_in_range(&self, x: f32) -> bool {
+        let ext = self.get_width() / 2.0;
+        (self.get_x() - ext..=self.get_x() + ext).contains(&x)
     }
 }

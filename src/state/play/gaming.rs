@@ -1,13 +1,13 @@
 use crate::engine::global::STATIC_DATA;
 use crate::engine::renderer::texture_renderer::TextureRenderer;
-use crate::engine::{GameState, LoopState, StateData, StateEvent, Trans};
+use crate::engine::{EasyGuiExt, GameState, LoopState, StateData, StateEvent, Trans};
 use crate::game::beatmap::file::SongBeatmapFile;
-use crate::game::beatmap::play::Gaming;
-use crate::game::get_play_rect;
+use crate::game::beatmap::play::{Gaming, NoteResult, PlayingNoteType};
+use crate::game::{get_play_rect, secs_to_offset_type};
 use crate::game::render::NoteRenderer;
 use crate::game::song::SongInfo;
 use anyhow::anyhow;
-use egui::{Color32, Context, Frame, Pos2, Rect, Stroke};
+use egui::{Align, Color32, Context, Frame, Layout, Pos2, Rect, Stroke};
 use rodio::buffer::SamplesBuffer;
 use rodio::{Decoder, OutputStreamHandle, Sink, Source};
 use std::io::{Cursor, Read};
@@ -17,15 +17,32 @@ use tokio::time::Instant;
 use winit::dpi::PhysicalSize;
 use winit::event::WindowEvent;
 use winit::keyboard::{Key, KeyCode, PhysicalKey};
+use crate::game::beatmap::{GamePos, FOUR_KEY_X};
+
+
+#[derive(Default)]
+pub struct HitFeedback {
+    last_result: Option<(NoteResult, Instant)>
+}
 
 pub struct GamingState {
     pub total_duration: Duration,
     pub start_time: Instant,
+    hit_feedback: HitFeedback,
     gaming: Gaming,
     game_rect: Rect,
     sink: Sink,
 }
+
 impl GamingState {
+
+    pub(crate) fn get_game_time(&self) -> f32 {
+        if self.sink.len() == 0 {
+            return self.total_duration.as_secs_f32()
+        }
+        self.sink.get_pos().as_secs_f32() - 3.0 * (self.sink.len().max(1) - 1) as f32
+    }
+    
     pub fn new(
         handle: OutputStreamHandle,
         song_info: &SongInfo,
@@ -70,6 +87,7 @@ impl GamingState {
         let this = Self {
             total_duration,
             start_time: Instant::now(),
+            hit_feedback: Default::default(),
             gaming: Gaming::load_game(beatmap_file),
             game_rect: Rect::ZERO,
             sink,
@@ -113,8 +131,10 @@ impl GameState for GamingState {
 
     fn render(&mut self, s: &mut StateData, ctx: &Context) -> Trans {
         let mut trans = Trans::None;
-        let game_time = self.sink.get_pos().as_secs_f32() - 3.0 * (self.sink.len().max(1) - 1) as f32;
-        self.gaming.tick(game_time);
+        let game_time = self.get_game_time();
+        self.gaming.tick(game_time, Some(|note: PlayingNoteType<'_>, result| {
+            self.hit_feedback.last_result = Some((result, Instant::now()))
+        }));
         let gpu = s.app.gpu.as_mut().unwrap();
         let mut nr = s.app.world.fetch_mut::<NoteRenderer>();
         for (timing_group, x) in self.gaming.normal_notes.iter().enumerate() {
@@ -139,7 +159,16 @@ impl GameState for GamingState {
         egui::CentralPanel::default()
             .frame(Frame::NONE)
             .show(ctx, |ui| {
-                ui.painter().hline(self.game_rect.x_range(), self.game_rect.center().y, Stroke::new(1.0, Color32::WHITE));
+                ui.painter().hline(ui.max_rect().x_range(), self.game_rect.center().y, Stroke::new(1.0, Color32::WHITE));
+                
+                ui.with_layout(Layout::bottom_up(Align::Center), |ui| {
+                   ui.no_select_text(format!("{}", self.gaming.combo_counter.get_combo()), [300.0, 100.0]);
+                    if let Some(last_result) = self.hit_feedback.last_result {
+                        if last_result.1.elapsed().as_secs_f32() <= 3.0 {
+                            ui.no_select_text(format!("{:?}", last_result.0), [300.0, 100.0]);
+                        }
+                    }
+                });
             });
         trans
     }
@@ -153,7 +182,35 @@ impl GameState for GamingState {
                     is_synthetic,
                 } => match event.physical_key {
                     PhysicalKey::Code(code) => match code {
-                        _ => {}
+                        _ => {
+                            let input_game_time = self.get_game_time() - time.elapsed().as_secs_f32();
+                            
+                            let input_x = match code {
+                                KeyCode::KeyD => {
+                                    FOUR_KEY_X[0]
+                                }
+                                KeyCode::KeyF => {
+                                    FOUR_KEY_X[1]
+                                }
+                                KeyCode::KeyJ => {
+                                    FOUR_KEY_X[2]
+                                }
+                                KeyCode::KeyK => {
+                                    FOUR_KEY_X[3]
+                                }
+                                _ => {
+                                    return
+                                }
+                            };
+                            let game_input = GamePos::new(input_x, secs_to_offset_type(input_game_time));
+                            if event.state.is_pressed() {
+                                if let Some(result) = self.gaming.process_input(game_input, ((input_x + 0.75) * 4.0) as _) {
+                                    self.hit_feedback.last_result = Some((result, Instant::now()));
+                                }
+                            } else {
+                                self.gaming.process_input_leave(game_input, ((input_x + 0.75) * 4.0) as _);
+                            }
+                        }
                     },
                     PhysicalKey::Unidentified(_) => {}
                 },

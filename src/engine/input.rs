@@ -1,6 +1,6 @@
 #![allow(unused)]
 
-use egui::{Ui, WidgetText};
+use egui::{Label, Ui, Vec2, WidgetText};
 use single_thread_cell::SingleThreadRefCell;
 use std::collections::{HashMap, HashSet};
 use std::mem::swap;
@@ -204,4 +204,17 @@ pub fn optional_edit<T: Default + FromStr + ToString>(
         }
     }
     dirty
+}
+
+pub trait EasyGuiExt {
+    fn ui(&mut self) -> &mut Ui;
+    fn no_select_text(&mut self, text: impl Into<WidgetText>, max_size: impl Into<Vec2>) {
+        self.ui().add_sized(max_size, Label::new(text).selectable(false));
+    }
+}
+
+impl EasyGuiExt for Ui {
+    fn ui(&mut self) -> &mut Ui {
+        self
+    }
 }

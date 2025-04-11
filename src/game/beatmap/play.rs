@@ -23,6 +23,19 @@ pub struct JudgeTimes {
     pub miss: OffsetType,
 }
 
+impl JudgeTimes {
+    pub(crate) fn get_result(&self, click_time: OffsetType, hit_time: OffsetType) -> NoteResult {
+        let delta = (click_time - hit_time).abs();
+        println!("Get result for delta {}", click_time - hit_time);
+        match delta {
+            _ if delta <= self.perfect => NoteResult::Perfect,
+            _ if delta <= self.great => NoteResult::Great,
+            _ if delta <= self.bad => NoteResult::Bad,
+            _ => NoteResult::Miss,
+        }
+    }
+}
+
 #[derive(Copy, Clone)]
 pub struct PlayOptions {
     pub default_view_time: f32,
@@ -31,10 +44,10 @@ pub struct PlayOptions {
 impl Default for JudgeTimes {
     fn default() -> Self {
         Self {
-            perfect: 10,
-            great: 20,
-            bad: 30,
-            miss: 40,
+            perfect: 20,
+            great: 40,
+            bad: 80,
+            miss: 100,
         }
     }
 }
@@ -48,24 +61,34 @@ impl Default for PlayOptions {
 }
 
 #[derive(Default)]
-pub struct ComboCounter {
+pub struct ScoreCounter {
+    max_combo: usize,
     combo: usize,
 }
 
 pub struct PlayingNote<NoteType> {
     note: NoteType,
+    pub note_idx: usize,
     pub note_y: f32,
     pub note_end_y: f32,
     start_result: Option<NoteResult>,
+    // the pointer holding this note.
+    holding: Vec<u64>,
 }
 
-impl ComboCounter {
+pub enum PlayingNoteType<'a> {
+    Normal(&'a mut PlayingNote<NormalNote>),
+    Long(&'a mut PlayingNote<LongNote>),
+}
+
+impl ScoreCounter {
     pub fn accept_result(&mut self, result: NoteResult) {
         if result == NoteResult::Miss {
             self.combo = 0;
         } else {
             self.combo += 1;
         }
+        self.max_combo = self.combo.max(self.max_combo);
     }
 
     pub fn should_display(&self) -> bool {
@@ -78,17 +101,19 @@ impl ComboCounter {
 }
 
 impl<T: Note> PlayingNote<T> {
-    pub fn new(note: T, note_y: f32, note_end_y: f32) -> Self {
+    pub fn new(note: T, note_idx: usize, note_y: f32, note_end_y: f32) -> Self {
         Self {
             note,
+            note_idx,
             note_y,
             note_end_y,
             start_result: None,
+            holding: vec![],
         }
     }
     #[inline]
     pub fn is_later_miss(&self, judge_times: &JudgeTimes, time: OffsetType) -> bool {
-        time > self.note.get_end_time().unwrap_or(self.note.get_time()) + judge_times.bad
+        time > self.note.get_end_time_or_time() + judge_times.bad
     }
 
     #[inline]
@@ -96,6 +121,7 @@ impl<T: Note> PlayingNote<T> {
         if self.note.get_end_time().is_none()
             && self.start_result.is_none()
             && time > self.note.get_time() + judge_times.bad
+            && time <= self.note.get_time() + judge_times.miss
         {
             true
         } else {
@@ -130,6 +156,48 @@ impl<T: Note> Note for PlayingNote<T> {
     }
 }
 
+impl PlayingNoteType<'_> {
+    fn get_note(&self) -> &dyn Note {
+        match self {
+            PlayingNoteType::Normal(x) => &x.note,
+            PlayingNoteType::Long(x) => &x.note,
+        }
+    }
+
+    fn is_not_started(&self) -> bool {
+        match self {
+            PlayingNoteType::Normal(x) => true,
+            PlayingNoteType::Long(x) => x.start_result.is_none(),
+        }
+    }
+}
+
+impl Note for PlayingNoteType<'_> {
+    fn get_x(&self) -> f32 {
+        self.get_note().get_x()
+    }
+
+    fn get_width(&self) -> f32 {
+        self.get_note().get_width()
+    }
+
+    fn get_time(&self) -> OffsetType {
+        self.get_note().get_time()
+    }
+
+    fn get_end_time(&self) -> Option<OffsetType> {
+        self.get_note().get_end_time()
+    }
+
+    fn get_note_type(&self) -> NoteHitType {
+        self.get_note().get_note_type()
+    }
+
+    fn get_timing_group(&self) -> u8 {
+        self.get_note().get_timing_group()
+    }
+}
+
 /// Notes in the same timing group
 pub struct TrackNotes<Note> {
     timings: TimingLine,
@@ -152,7 +220,7 @@ impl<T: Note> TrackNotes<T> {
         ops: &PlayOptions,
         judge_times: &JudgeTimes,
         game_time: f32,
-        mut callback: impl FnMut(&PlayingNote<T>, NoteResult),
+        mut callback: impl FnMut(&mut PlayingNote<T>, NoteResult),
     ) {
         let offset = secs_to_offset_type(game_time);
 
@@ -173,10 +241,6 @@ impl<T: Note> TrackNotes<T> {
             if x.is_later_miss(&judge_times, offset) {
                 callback(x, NoteResult::Miss);
                 false
-            } else if x.is_early_miss(&judge_times, offset) {
-                x.start_result = Some(NoteResult::Miss);
-                callback(x, NoteResult::Miss);
-                true
             } else {
                 true
             }
@@ -185,6 +249,10 @@ impl<T: Note> TrackNotes<T> {
 
     pub fn get_play_notes(&self) -> &VecDeque<PlayingNote<T>> {
         &self.play_area
+    }
+
+    fn remove_play_note(&mut self, idx: usize) {
+        self.play_area.retain(|x| x.note_idx != idx);
     }
 }
 
@@ -221,19 +289,29 @@ pub struct Gaming {
     judge: JudgeTimes,
     pub normal_notes: Vec<TrackNotes<NormalNote>>,
     pub long_notes: Vec<TrackNotes<LongNote>>,
-    combo_counter: ComboCounter,
+    pub combo_counter: ScoreCounter,
 }
 
 impl Gaming {
-    fn tick_track(&mut self, game_time: f32) {
+    fn tick_track(
+        &mut self,
+        game_time: f32,
+        mut callback: Option<impl FnMut(PlayingNoteType, NoteResult)>,
+    ) {
         for x in self.normal_notes.iter_mut() {
             x.tick(&self.ops, &self.judge, game_time, |note, result| {
                 self.combo_counter.accept_result(result);
+                if let Some(cb) = &mut callback {
+                    cb(PlayingNoteType::Normal(note), result);
+                }
             });
         }
         for x in self.long_notes.iter_mut() {
             x.tick(&self.ops, &self.judge, game_time, |note, result| {
                 self.combo_counter.accept_result(result);
+                if let Some(cb) = &mut callback {
+                    cb(PlayingNoteType::Long(note), result);
+                }
             });
         }
     }
@@ -245,30 +323,44 @@ impl Gaming {
         file.normal_notes.sort_by_key(|x| x.time);
         file.long_notes.sort_by_key(|x| x.start_time);
 
-        fn add_notes<T: Note + Copy>(notes: &[T], track: &mut Vec<TrackNotes<T>>, tg: &TimingGroup, view_time: f32) {
+        fn add_notes<T: Note + Copy>(
+            notes: &[T],
+            track: &mut Vec<TrackNotes<T>>,
+            tg: &TimingGroup,
+            view_time: f32,
+            cnt: &mut usize,
+        ) {
             for x in notes {
                 if x.get_timing_group() as usize >= track.len() {
                     track.resize_with(x.get_timing_group() as usize + 1, || TrackNotes::default());
                 }
-                let start_y = tg.get_gameplay_y(
-                    x.get_time(),
-                    x.get_timing_group(),
-                    view_time,
-                );
-                let end_y = tg.get_gameplay_y(
-                    x.get_end_time_or_time(),
-                    x.get_timing_group(),
-                    view_time,
-                );
+                let start_y = tg.get_gameplay_y(x.get_time(), x.get_timing_group(), view_time);
+                let end_y =
+                    tg.get_gameplay_y(x.get_end_time_or_time(), x.get_timing_group(), view_time);
                 track[x.get_timing_group() as usize]
-                    .pending.push_back(PlayingNote::new(*x, start_y, end_y));
+                    .pending
+                    .push_back(PlayingNote::new(*x, *cnt, start_y, end_y));
+                *cnt += 1;
             }
         }
 
         let mut normal_notes = vec![];
-        add_notes(&file.normal_notes, &mut normal_notes, &file.timing_group, ops.default_view_time);
+        let mut total_notes = 0;
+        add_notes(
+            &file.normal_notes,
+            &mut normal_notes,
+            &file.timing_group,
+            ops.default_view_time,
+            &mut total_notes,
+        );
         let mut long_notes = vec![];
-        add_notes(&file.long_notes, &mut long_notes, &file.timing_group, ops.default_view_time);
+        add_notes(
+            &file.long_notes,
+            &mut long_notes,
+            &file.timing_group,
+            ops.default_view_time,
+            &mut total_notes,
+        );
 
         for (idx, tl) in file.timing_group.timing_lines.iter().enumerate() {
             if let Some(n) = normal_notes.get_mut(idx) {
@@ -289,7 +381,83 @@ impl Gaming {
         }
     }
 
-    pub fn tick(&mut self, game_time: f32) {
-        self.tick_track(game_time);
+    pub fn tick(
+        &mut self,
+        game_time: f32,
+        callback: Option<impl FnMut(PlayingNoteType, NoteResult)>,
+    ) {
+        self.tick_track(game_time, callback);
+    }
+
+    /// return the note result,
+    pub fn process_input(
+        &mut self,
+        input: GamePos,
+        pointer: u64,
+    ) -> Option<NoteResult> {
+        let time_range = input.time - self.judge.bad..=input.time + self.judge.miss;
+        let in_time_range = |time: OffsetType| time_range.contains(&time);
+
+        // first, we only allow to click one note (long or single)
+        let the_first_note_to_click = self
+            .normal_notes
+            .iter_mut()
+            .flat_map(|x| x.play_area.iter_mut())
+            .map(|x| PlayingNoteType::Normal(x))
+            .chain(
+                self.long_notes
+                    .iter_mut()
+                    .flat_map(|x| x.play_area.iter_mut().map(|x| PlayingNoteType::Long(x))),
+            )
+            .filter(|x| {
+                x.is_x_in_range(input.x) && in_time_range(x.get_time()) && x.is_not_started()
+            })
+            .min_by(|a, b| {
+                a.get_time().cmp(&b.get_time()).then(
+                    (a.get_x() - input.x)
+                        .abs()
+                        .total_cmp(&(b.get_x() - input.x).abs()),
+                )
+            });
+
+        let mut ret = None;
+        if let Some(first_note) = the_first_note_to_click {
+            let result = match first_note {
+                PlayingNoteType::Normal(note) => {
+                    let result = self.judge.get_result(input.time, note.get_time());
+                    note.start_result = Some(result);
+                    let idx = note.note_idx;
+                    let tg = note.get_timing_group() as usize;
+                    self.normal_notes[tg].remove_play_note(idx);
+                    result
+                }
+                PlayingNoteType::Long(note) => {
+                    let result = self.judge.get_result(input.time, note.get_time());
+                    note.start_result = Some(result);
+                    let idx = note.note_idx;
+                    let tg = note.get_timing_group() as usize;
+                    self.long_notes[tg].remove_play_note(idx);
+                    result
+                }
+            };
+
+            self.combo_counter.accept_result(result);
+            ret = Some(result);
+        }
+        // todo: long note holding.
+        ret
+    }
+
+    pub fn process_input_leave(
+        &mut self,
+        input: GamePos,
+        pointer: u64,
+    ) -> Option<(NoteResult, PlayingNoteType)> {
+        let time_range = input.time - self.judge.bad..=input.time + self.judge.miss;
+        let in_time_range = |time: OffsetType| time_range.contains(&time);
+
+        // first, we only allow to click one note (long or single)
+        // todo: long note check
+        None
     }
 }
