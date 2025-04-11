@@ -113,7 +113,7 @@ impl GameState for GamingState {
 
     fn render(&mut self, s: &mut StateData, ctx: &Context) -> Trans {
         let mut trans = Trans::None;
-        let game_time = self.sink.get_pos().as_secs_f32() - 3.0;
+        let game_time = self.sink.get_pos().as_secs_f32() - 3.0 * (self.sink.len().max(1) - 1) as f32;
         self.gaming.tick(game_time);
         let gpu = s.app.gpu.as_mut().unwrap();
         let mut nr = s.app.world.fetch_mut::<NoteRenderer>();
