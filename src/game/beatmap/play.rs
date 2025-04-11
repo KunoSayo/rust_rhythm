@@ -11,6 +11,7 @@ use std::time::Instant;
 pub enum NoteResult {
     Miss,
     Bad,
+    Good,
     Great,
     Perfect,
 }
@@ -19,6 +20,7 @@ pub enum NoteResult {
 pub struct JudgeTimes {
     pub perfect: OffsetType,
     pub great: OffsetType,
+    pub good: OffsetType,
     pub bad: OffsetType,
     pub miss: OffsetType,
 }
@@ -30,6 +32,7 @@ impl JudgeTimes {
         match delta {
             _ if delta <= self.perfect => NoteResult::Perfect,
             _ if delta <= self.great => NoteResult::Great,
+            _ if delta <= self.good => NoteResult::Good,
             _ if delta <= self.bad => NoteResult::Bad,
             _ => NoteResult::Miss,
         }
@@ -44,10 +47,11 @@ pub struct PlayOptions {
 impl Default for JudgeTimes {
     fn default() -> Self {
         Self {
-            perfect: 20,
-            great: 40,
-            bad: 80,
-            miss: 100,
+            perfect: 30,
+            great: 60,
+            good: 100,
+            bad: 150,
+            miss: 200,
         }
     }
 }
@@ -113,7 +117,8 @@ impl<T: Note> PlayingNote<T> {
     }
     #[inline]
     pub fn is_later_miss(&self, judge_times: &JudgeTimes, time: OffsetType) -> bool {
-        time > self.note.get_end_time_or_time() + judge_times.bad
+        // we use miss for some lag cases.
+        time > self.note.get_time() + judge_times.miss && self.start_result.is_none()
     }
 
     #[inline]
@@ -240,6 +245,8 @@ impl<T: Note> TrackNotes<T> {
         self.play_area.retain_mut(|x| {
             if x.is_later_miss(&judge_times, offset) {
                 callback(x, NoteResult::Miss);
+                false
+            } else if x.start_result.is_some() && x.get_end_time_or_time() <= offset {                
                 false
             } else {
                 true
