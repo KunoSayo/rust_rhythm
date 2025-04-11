@@ -10,6 +10,7 @@ use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer,
     CommandEncoderDescriptor, Device,
 };
+use crate::game::beatmap::play::PlayingNote;
 
 pub struct NoteRenderDesc {
     // Left, Middle, Right
@@ -110,6 +111,83 @@ impl NoteRenderDesc {
         } else {
             let up = center_y + self.note_half_height * 2.0 / viewport_size.1;
             let down = center_y - self.note_half_height * 2.0 / viewport_size.1;
+            match note.get_note_type() {
+                NoteHitType::Click => {
+                    self.get_obj(
+                        left_x,
+                        right_x,
+                        up,
+                        down,
+                        viewport_size,
+                        &self.tex_coords,
+                        &mut consume,
+                    );
+                }
+                NoteHitType::Slide => {
+                    self.get_obj(
+                        left_x,
+                        right_x,
+                        up,
+                        down,
+                        viewport_size,
+                        &self.slide_coords,
+                        &mut consume,
+                    );
+                }
+            }
+        }
+    }
+
+    pub fn get_note_render_obj_by_y<T: Note>(
+        &self,
+        viewport_size: (f32, f32),
+        note_y: f32,
+        note_end_y: f32,
+        note: &T,
+        mut consume: impl FnMut(TextureObject),
+    ) {
+        let left_x = note.get_x() - note.get_width() / 2.0;
+        let right_x = note.get_x() + note.get_width() / 2.0;
+
+        let note_center_y = note_y;
+        if let Some(et) = note.get_end_time() {
+            let up = note_center_y + self.note_half_height * 2.0 / viewport_size.1;
+            let down = note_center_y - self.note_half_height * 2.0 / viewport_size.1;
+            let mid_down = up;
+            self.get_obj(
+                left_x,
+                right_x,
+                up,
+                down,
+                viewport_size,
+                &self.long_coords[2],
+                &mut consume,
+            );
+            let up = note_end_y + self.note_half_height * 2.0 / viewport_size.1;
+            let down = note_end_y - self.note_half_height * 2.0 / viewport_size.1;
+            let mid_up = down;
+            self.get_obj(
+                left_x,
+                right_x,
+                up,
+                down,
+                viewport_size,
+                &self.long_coords[0],
+                &mut consume,
+            );
+
+            self.get_obj(
+                left_x,
+                right_x,
+                mid_up,
+                mid_down,
+                viewport_size,
+                &self.long_coords[1],
+                &mut consume,
+            );
+        } else {
+            let up = note_center_y + self.note_half_height * 2.0 / viewport_size.1;
+            let down = note_center_y - self.note_half_height * 2.0 / viewport_size.1;
             match note.get_note_type() {
                 NoteHitType::Click => {
                     self.get_obj(
@@ -254,5 +332,27 @@ impl NoteRenderer {
             objs: vec![],
             background_objs: vec![],
         }
+    }
+
+    pub fn collect_playing_notes<T: Note>(&mut self, notes: &[PlayingNote<T>],
+                                  viewport_size: (f32, f32), current_y: f32) {
+        let NoteRenderer {
+            note_desc: desc,
+            objs: fgs,
+            ..
+        } = self;
+        let mut to_objs = |obj| {
+            fgs.push(obj);
+        };
+        for x in notes {
+            desc.get_note_render_obj_by_y(
+                viewport_size,
+                x.note_y - current_y,
+                x.note_end_y - current_y,
+                x,
+                &mut to_objs,
+            );
+        }
+
     }
 }

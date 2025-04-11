@@ -7,6 +7,7 @@ use std::convert::Into;
 use std::fmt::{Display, Formatter};
 use std::num::NonZeroU8;
 use std::str::FromStr;
+use std::sync::LazyLock;
 
 /// Store bpm with 100 times
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -20,8 +21,6 @@ pub fn get_ron_options() -> Options {
 pub fn get_ron_options_for_implicit_some() -> Options {
     Options::default().with_default_extension(Extensions::IMPLICIT_SOME)
 }
-
-
 
 impl From<f32> for Bpm {
     fn from(value: f32) -> Self {
@@ -114,7 +113,11 @@ pub struct Timing {
     /// The speed extended from last timing or this timing
     #[serde(skip)]
     speed: f32,
+    /// The gameplay y if view seconds is 1
+    #[serde(skip)]
+    start_y: f32,
 }
+
 pub const DEFAULT_TIMING: Timing = Timing {
     set_bpm: Some(Bpm(60 * 100)),
     set_speed: Some(1.0),
@@ -125,7 +128,12 @@ pub const DEFAULT_TIMING: Timing = Timing {
     },
     bpm: Bpm(60 * 100),
     speed: 1.0,
+    start_y: 0.0,
 };
+
+pub static DEFAULT_TIMING_LINE: LazyLock<TimingLine> = LazyLock::new(|| TimingLine {
+    timings: vec![DEFAULT_TIMING],
+});
 
 impl Default for Timing {
     fn default() -> Self {
@@ -144,11 +152,10 @@ pub struct TimingGroup {
 }
 
 impl Timing {
-    
     pub fn get_bpm(&self) -> Bpm {
         self.bpm
     }
-    
+
     pub fn get_speed(&self) -> f32 {
         self.speed
     }
@@ -195,10 +202,10 @@ impl Timing {
         let detail_offset = index as i64 * 60 * 1000 * 100 / self.bpm.0 as i64 / detail as i64;
         let beat_offset = self.offset
             + (self.bpm.0 as i64 - 1
-                + (number as i64)
-                    .checked_mul(60 * 1000 * 100)
-                    .expect("Get beat time overflow!"))
-                / self.bpm.0 as i64;
+            + (number as i64)
+            .checked_mul(60 * 1000 * 100)
+            .expect("Get beat time overflow!"))
+            / self.bpm.0 as i64;
         detail_offset
             .checked_add(beat_offset)
             .expect("Time Overflow")
@@ -244,6 +251,7 @@ impl Timing {
             time_signature,
             set_speed: None,
             speed: 1.0,
+            start_y: 0.0,
         }
     }
 }
@@ -254,13 +262,16 @@ impl TimingLine {
         self.timings.push(timing);
         self.update();
     }
-    
+
     pub fn update(&mut self) {
         self.timings.retain(|x| x.offset >= 0);
         self.timings.sort_by_key(|x| x.offset);
         let mut cur_bpm = Bpm::default();
         let mut cur_speed = 1.0;
+        let mut last_start_y = 0.0;
+        let mut last_offset = 0;
         for t in self.timings.iter_mut() {
+            t.start_y = last_start_y + cur_speed * (t.offset - last_offset) as f32;
             if let Some(bpm) = t.set_bpm {
                 cur_bpm = bpm;
             }
@@ -269,9 +280,11 @@ impl TimingLine {
             }
             t.bpm = cur_bpm;
             t.speed = cur_speed;
+            last_start_y = t.start_y;
+            last_offset = t.offset;
         }
     }
-    
+
     /// Return the timing slice that first element offset is less equal than then given offset in this timing line.
     pub fn get_timings(&self, offset: OffsetType) -> &[Timing] {
         let t = if self.timings.is_empty() {
@@ -290,6 +303,17 @@ impl TimingLine {
         };
         t
     }
+
+    pub(crate) fn get_y(&self, time: OffsetType) -> f32 {
+        let offset = time;
+        let timing = &self.get_timings(offset)[0];
+        timing.start_y + ((time - timing.offset) as f32 / 1000.0) * timing.get_speed()
+    }
+    pub(crate) fn get_y_f32(&self, time: f32) -> f32 {
+        let offset = (time * 1000.0).floor() as OffsetType;
+        let timing = &self.get_timings(offset)[0];
+        timing.start_y + ((time - timing.offset as f32 / 1000.0) * timing.get_speed())
+    }
 }
 
 impl TimingGroup {
@@ -298,7 +322,7 @@ impl TimingGroup {
             timing_lines: vec![TimingLine::default()],
         }
     }
-    
+
     pub fn update(&mut self) {
         for x in &mut self.timing_lines {
             x.update();
@@ -362,6 +386,24 @@ impl TimingGroup {
         } else {
             false
         }
+    }
+
+    pub fn get_gameplay_y(&self, time: OffsetType, timing_group: u8, view_secs: f32) -> f32 {
+        let tl = if let Some(tl) = self.timing_lines.get(timing_group as usize) {
+            tl
+        } else {
+            &DEFAULT_TIMING_LINE
+        };
+        tl.get_y(time) * view_secs
+    }
+
+    pub fn get_gameplay_y_f32(&self, time: f32, timing_group: u8, view_secs: f32) -> f32 {
+        let tl = if let Some(tl) = self.timing_lines.get(timing_group as usize) {
+            tl
+        } else {
+            &DEFAULT_TIMING_LINE
+        };
+        tl.get_y_f32(time) * view_secs
     }
 
     pub fn get_beat_iterator(

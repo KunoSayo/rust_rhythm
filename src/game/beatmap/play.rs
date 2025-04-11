@@ -1,7 +1,7 @@
 use crate::game::beatmap::file::SongBeatmapFile;
 use crate::game::beatmap::GamePos;
-use crate::game::note::{LongNote, NormalNote, Note};
-use crate::game::timing::TimingLine;
+use crate::game::note::{LongNote, NormalNote, Note, NoteExt, NoteHitType};
+use crate::game::timing::{TimingGroup, TimingLine};
 use crate::game::{secs_to_offset_type, OffsetType};
 use std::collections::VecDeque;
 use std::fmt::Display;
@@ -54,13 +54,9 @@ pub struct ComboCounter {
 
 pub struct PlayingNote<NoteType> {
     note: NoteType,
+    pub note_y: f32,
+    pub note_end_y: f32,
     start_result: Option<NoteResult>,
-}
-
-impl<T: Note> From<T> for PlayingNote<T> {
-    fn from(value: T) -> Self {
-        Self::new(value)
-    }
 }
 
 impl ComboCounter {
@@ -82,9 +78,11 @@ impl ComboCounter {
 }
 
 impl<T: Note> PlayingNote<T> {
-    pub fn new(note: T) -> Self {
+    pub fn new(note: T, note_y: f32, note_end_y: f32) -> Self {
         Self {
             note,
+            note_y,
+            note_end_y,
             start_result: None,
         }
     }
@@ -95,7 +93,10 @@ impl<T: Note> PlayingNote<T> {
 
     #[inline]
     pub fn is_early_miss(&self, judge_times: &JudgeTimes, time: OffsetType) -> bool {
-        if self.note.get_end_time().is_none() && self.start_result.is_none() && time > self.note.get_time() + judge_times.bad {
+        if self.note.get_end_time().is_none()
+            && self.start_result.is_none()
+            && time > self.note.get_time() + judge_times.bad
+        {
             true
         } else {
             false
@@ -103,10 +104,36 @@ impl<T: Note> PlayingNote<T> {
     }
 }
 
+impl<T: Note> Note for PlayingNote<T> {
+    fn get_x(&self) -> f32 {
+        self.note.get_x()
+    }
+
+    fn get_width(&self) -> f32 {
+        self.note.get_width()
+    }
+
+    fn get_time(&self) -> OffsetType {
+        self.note.get_time()
+    }
+
+    fn get_end_time(&self) -> Option<OffsetType> {
+        self.note.get_end_time()
+    }
+
+    fn get_note_type(&self) -> NoteHitType {
+        self.note.get_note_type()
+    }
+
+    fn get_timing_group(&self) -> u8 {
+        self.note.get_timing_group()
+    }
+}
+
 /// Notes in the same timing group
 pub struct TrackNotes<Note> {
     timings: TimingLine,
-    play_area: VecDeque<PlayingNote<Note>>,
+    pub play_area: VecDeque<PlayingNote<Note>>,
     pending: VecDeque<PlayingNote<Note>>,
 }
 
@@ -120,9 +147,16 @@ impl<T> Default for TrackNotes<T> {
     }
 }
 impl<T: Note> TrackNotes<T> {
-    pub fn tick(&mut self, ops: &PlayOptions, judge_times: &JudgeTimes, game_time: f32, mut callback: impl FnMut(&PlayingNote<T>, NoteResult)) {
+    pub fn tick(
+        &mut self,
+        ops: &PlayOptions,
+        judge_times: &JudgeTimes,
+        game_time: f32,
+        mut callback: impl FnMut(&PlayingNote<T>, NoteResult),
+    ) {
         let offset = secs_to_offset_type(game_time);
-        
+
+        // move pending to play area for some lag case.
         while let Some(note) = self.pending.front() {
             if note.note.get_time() <= secs_to_offset_type(game_time + ops.default_view_time + 1.0)
             {
@@ -135,19 +169,22 @@ impl<T: Note> TrackNotes<T> {
                 break;
             }
         }
-        self.play_area
-            .retain_mut(|x| {
-                if x.is_later_miss(&judge_times, offset) {
-                    callback(x, NoteResult::Miss);
-                    false
-                } else if x.is_early_miss(&judge_times, offset) {
-                    x.start_result = Some(NoteResult::Miss);
-                    callback(x, NoteResult::Miss);
-                    true
-                } else {
-                    true
-                }
-            });
+        self.play_area.retain_mut(|x| {
+            if x.is_later_miss(&judge_times, offset) {
+                callback(x, NoteResult::Miss);
+                false
+            } else if x.is_early_miss(&judge_times, offset) {
+                x.start_result = Some(NoteResult::Miss);
+                callback(x, NoteResult::Miss);
+                true
+            } else {
+                true
+            }
+        });
+    }
+
+    pub fn get_play_notes(&self) -> &VecDeque<PlayingNote<T>> {
+        &self.play_area
     }
 }
 
@@ -179,11 +216,11 @@ impl GamingInput {
 }
 
 pub struct Gaming {
-    raw_file: SongBeatmapFile,
-    ops: PlayOptions,
+    pub raw_file: SongBeatmapFile,
+    pub(crate) ops: PlayOptions,
     judge: JudgeTimes,
-    normal_notes: Vec<TrackNotes<NormalNote>>,
-    long_notes: Vec<TrackNotes<LongNote>>,
+    pub normal_notes: Vec<TrackNotes<NormalNote>>,
+    pub long_notes: Vec<TrackNotes<LongNote>>,
     combo_counter: ComboCounter,
 }
 
@@ -202,26 +239,36 @@ impl Gaming {
     }
 
     pub fn load_game(mut file: SongBeatmapFile) -> Self {
+        let judge = JudgeTimes::default();
+        let ops = PlayOptions::default();
+
         file.normal_notes.sort_by_key(|x| x.time);
         file.long_notes.sort_by_key(|x| x.start_time);
+
+        fn add_notes<T: Note + Copy>(notes: &[T], track: &mut Vec<TrackNotes<T>>, tg: &TimingGroup, view_time: f32) {
+            for x in notes {
+                if x.get_timing_group() as usize >= track.len() {
+                    track.resize_with(x.get_timing_group() as usize + 1, || TrackNotes::default());
+                }
+                let start_y = tg.get_gameplay_y(
+                    x.get_time(),
+                    x.get_timing_group(),
+                    view_time,
+                );
+                let end_y = tg.get_gameplay_y(
+                    x.get_end_time_or_time(),
+                    x.get_timing_group(),
+                    view_time,
+                );
+                track[x.get_timing_group() as usize]
+                    .pending.push_back(PlayingNote::new(*x, start_y, end_y));
+            }
+        }
+
         let mut normal_notes = vec![];
-        for x in &file.normal_notes {
-            if x.timing_group as usize >= normal_notes.len() {
-                normal_notes.resize_with(x.timing_group as usize + 1, || TrackNotes::default());
-            }
-            normal_notes[x.timing_group as usize]
-                .pending
-                .push_back(PlayingNote::new(*x));
-        }
+        add_notes(&file.normal_notes, &mut normal_notes, &file.timing_group, ops.default_view_time);
         let mut long_notes = vec![];
-        for x in &file.long_notes {
-            if x.timing_group as usize >= long_notes.len() {
-                long_notes.resize_with(x.timing_group as usize + 1, || TrackNotes::default());
-            }
-            long_notes[x.timing_group as usize]
-                .pending
-                .push_back(PlayingNote::new(*x));
-        }
+        add_notes(&file.long_notes, &mut long_notes, &file.timing_group, ops.default_view_time);
 
         for (idx, tl) in file.timing_group.timing_lines.iter().enumerate() {
             if let Some(n) = normal_notes.get_mut(idx) {
@@ -234,8 +281,8 @@ impl Gaming {
 
         Self {
             raw_file: file.clone(),
-            ops: Default::default(),
-            judge: JudgeTimes::default(),
+            ops,
+            judge,
             normal_notes,
             long_notes,
             combo_counter: Default::default(),

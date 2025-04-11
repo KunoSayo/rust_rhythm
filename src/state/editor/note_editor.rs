@@ -1,11 +1,11 @@
 use crate::engine::renderer::texture_renderer::TextureRenderer;
 use crate::engine::{EguiExt, StateData};
 use crate::game::beatmap::file::SongBeatmapFile;
-use crate::game::beatmap::{GamePos, MapRule};
+use crate::game::beatmap::{GamePos, MapRule, FOUR_KEY_X};
 use crate::game::note::consts::NOTE_HEIGHT_PIXEL;
 use crate::game::note::{LongNote, NormalNote, Note, NoteHitType};
 use crate::game::render::NoteRenderer;
-use crate::game::OffsetType;
+use crate::game::{get_play_rect, OffsetType};
 use crate::state::editor::editor::BeatMapEditor;
 use crate::state::editor::note_editor::PointerType::Select;
 use crate::state::editor::util::map_point_to_std_pos_in_rect;
@@ -348,7 +348,7 @@ impl BeatMapEditor {
         match self.beatmap.rule {
             MapRule::Falling => {}
             MapRule::FourKey => {
-                x = get_nearest_result(x, &[-0.75, -0.25, 0.25, 0.75], None);
+                x = get_nearest_result(x, &FOUR_KEY_X, None);
             }
         }
 
@@ -683,22 +683,9 @@ impl BeatMapEditor {
                 let rect = ui.max_rect();
                 let center_point = rect.center();
                 // 4:3 current
-                let (half_x, half_y) = if rect.height() <= rect.width() {
-                    // expand to the top
-                    let half_y = rect.height() / 2.0 - 10.0;
-                    let half_x = half_y * 4.0 / 3.0;
-                    (half_x, half_y)
-                } else {
-                    // expand to the left
-                    let half_x = rect.width() / 2.0 - 10.0;
-                    let half_y = half_x * 0.75;
-                    (half_x, half_y)
-                };
+            
 
-                let rect = Rect {
-                    min: center_point - Vec2::new(half_x, half_y),
-                    max: center_point + Vec2::new(half_x, half_y),
-                };
+                let rect = get_play_rect(rect);
 
                 {
                     let rect = rect.expand(1.0);

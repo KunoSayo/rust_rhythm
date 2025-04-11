@@ -93,6 +93,14 @@ impl Note for LongNote {
     fn get_timing_group(&self) -> u8 {
         self.timing_group
     }
-    
-    
+}
+
+pub trait NoteExt {
+    fn get_end_time_or_time(&self) -> OffsetType;
+}
+
+impl <T: Note> NoteExt for T {
+    fn get_end_time_or_time(&self) -> OffsetType {
+        self.get_end_time().unwrap_or(self.get_time())
+    }
 }

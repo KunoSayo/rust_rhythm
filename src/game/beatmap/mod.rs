@@ -1,14 +1,16 @@
 //! The real playing beatmap that contains detail notes.
 
 pub mod file;
-mod test;
 pub mod play;
+mod test;
 
-use std::cmp::Ordering;
 use crate::game::beatmap::file::SongBeatmapFile;
-use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
 use crate::game::OffsetType;
+use serde::{Deserialize, Serialize};
+use std::cmp::Ordering;
+use std::path::PathBuf;
+
+pub static FOUR_KEY_X: [f32; 4] = [-0.75, -0.25, 0.25, 0.75];
 
 #[derive(Copy, Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub enum MapRule {
@@ -23,7 +25,6 @@ pub struct SongBeatmapInfo {
     pub file_path: PathBuf,
     pub song_beatmap_file: SongBeatmapFile,
 }
-
 
 impl Default for MapRule {
     fn default() -> Self {
@@ -51,8 +52,7 @@ impl PartialOrd for GamePos {
 }
 impl Ord for GamePos {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.time.cmp(&other.time)
-            .then(self.x.total_cmp(&other.x))
+        self.time.cmp(&other.time).then(self.x.total_cmp(&other.x))
     }
 }
 
@@ -67,23 +67,20 @@ impl Eq for GamePos {}
 #[derive(Default, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct GameRect {
     min: GamePos,
-    max: GamePos
+    max: GamePos,
 }
 
 impl GameRect {
     pub fn from_ab(a: GamePos, b: GamePos) -> Self {
         let l = a.x.min(b.x);
         let r = a.x.max(b.x);
-        
+
         let bottom = a.time.min(b.time);
         let top = a.time.max(b.time);
-        
+
         let min = GamePos::new(l, bottom);
         let max = GamePos::new(r, top);
-        
-        Self {
-            min,
-            max
-        }
+
+        Self { min, max }
     }
 }

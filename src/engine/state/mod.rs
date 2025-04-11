@@ -2,7 +2,7 @@
 
 
 use std::cell::RefCell;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use egui::epaint::ahash::HashMap;
 use egui::NumExt;
@@ -36,7 +36,7 @@ pub enum StateEvent<'a> {
     ReloadGPU,
     PostUiRender,
     Resume,
-    Window(&'a WindowEvent),
+    Window(&'a WindowEvent, Instant),
 }
 
 impl Default for Trans {

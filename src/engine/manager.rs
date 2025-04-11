@@ -133,7 +133,7 @@ impl WindowInstance {
 }
 /// put app and el here
 macro_rules! get_state {
-    ($app: expr_2021, $el: expr_2021) => {{
+    ($app: expr, $el: expr) => {{
         crate::engine::state::StateData {
             app: &mut $app,
             wd: $el,
@@ -391,13 +391,13 @@ impl WindowInstance {
         self.states.push(start);
     }
 
-    fn on_window_event(&mut self, we: &WindowEvent, wd: &mut GlobalData) {
+    fn on_window_event(&mut self, we: &WindowEvent, time: Instant, wd: &mut GlobalData) {
         self.loop_info.got_event = true;
         // let _ = self.app.egui.on_window_event(&self.app.window, we);
 
         let sd = &mut get_state!(self.app, wd);
         for x in &mut self.states {
-            x.on_event(sd, StateEvent::Window(we));
+            x.on_event(sd, StateEvent::Window(we, time));
         }
         match we {
             WindowEvent::Touch(touch) => {
@@ -696,7 +696,7 @@ impl WindowManager {
                 };
 
                 let mut wm = window.borrow_mut();
-                wm.on_window_event(&event, &mut wd);
+                wm.on_window_event(&event, time, &mut wd);
 
                 let AppInstance {
                     ref window,

@@ -68,7 +68,7 @@ impl GameState for MenuState {
     fn shadow_render(&mut self, s: &mut StateData, ctx: &Context) {
         if self.show_debug {
             egui::CentralPanel::default()
-                .frame(Frame::none())
+                .frame(Frame::NONE)
                 .show(ctx, |ui| {
                     ui.label(format!("fps: {:.2}", 1.0 / s.dt))
                 });

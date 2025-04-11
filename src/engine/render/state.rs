@@ -31,6 +31,11 @@ impl WgpuData {
         (self.surface_cfg.width, self.surface_cfg.height)
     }
 
+    #[inline]
+    pub fn get_screen_size_f32(&self) -> (f32, f32) {
+        (self.surface_cfg.width as f32, self.surface_cfg.height as f32)
+    }
+
     pub fn resize(&mut self, width: u32, height: u32) {
         self.surface_cfg.width = width;
         self.surface_cfg.height = height;
