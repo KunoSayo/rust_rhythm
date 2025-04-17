@@ -3,6 +3,8 @@ use crate::game::beatmap::GamePos;
 use crate::game::note::{LongNote, NormalNote, Note, NoteExt, NoteHitType};
 use crate::game::timing::{TimingGroup, TimingLine};
 use crate::game::{secs_to_offset_type, OffsetType};
+use egui::ahash::{HashMap, HashSet};
+use rayon::iter::IntoParallelRefMutIterator;
 use std::collections::VecDeque;
 use std::fmt::Display;
 use std::time::Instant;
@@ -77,7 +79,7 @@ pub struct PlayingNote<NoteType> {
     pub note_end_y: f32,
     pub start_result: Option<NoteResult>,
     // the pointer holding this note.
-    holding: Vec<u64>,
+    holding: HashSet<u64>,
 }
 
 pub enum PlayingNoteType<'a> {
@@ -112,9 +114,10 @@ impl<T: Note> PlayingNote<T> {
             note_y,
             note_end_y,
             start_result: None,
-            holding: vec![],
+            holding: Default::default(),
         }
     }
+    /// note is later miss for the start time
     #[inline]
     pub fn is_later_miss(&self, judge_times: &JudgeTimes, time: OffsetType) -> bool {
         // we use miss for some lag cases.
@@ -245,8 +248,16 @@ impl<T: Note> TrackNotes<T> {
         self.play_area.retain_mut(|x| {
             if x.is_later_miss(&judge_times, offset) {
                 callback(x, NoteResult::Miss);
-                false
-            } else if x.start_result.is_some() && x.get_end_time_or_time() <= offset {                
+                if x.get_end_time().is_some() {
+                    x.start_result = Some(NoteResult::Miss);
+                    true
+                } else {
+                    false
+                }
+            } else if let Some(r) = x.start_result {
+                if x.get_end_time_or_time() <= offset {
+                    callback(x, r)
+                }
                 false
             } else {
                 true
@@ -296,6 +307,7 @@ pub struct Gaming {
     judge: JudgeTimes,
     pub normal_notes: Vec<TrackNotes<NormalNote>>,
     pub long_notes: Vec<TrackNotes<LongNote>>,
+    pointers: HashMap<u64, GamePos>,
     pub combo_counter: ScoreCounter,
 }
 
@@ -384,6 +396,7 @@ impl Gaming {
             judge,
             normal_notes,
             long_notes,
+            pointers: Default::default(),
             combo_counter: Default::default(),
         }
     }
@@ -397,24 +410,21 @@ impl Gaming {
     }
 
     /// return the note result,
-    pub fn process_input(
-        &mut self,
-        input: GamePos,
-        pointer: u64,
-    ) -> Option<NoteResult> {
+    pub fn process_input(&mut self, input: GamePos, pointer: u64) -> Option<NoteResult> {
         let time_range = input.time - self.judge.bad..=input.time + self.judge.miss;
         let in_time_range = |time: OffsetType| time_range.contains(&time);
 
         // first, we only allow to click one note (long or single)
+        use rayon::iter::*;
         let the_first_note_to_click = self
             .normal_notes
-            .iter_mut()
-            .flat_map(|x| x.play_area.iter_mut())
+            .par_iter_mut()
+            .flat_map(|x| x.play_area.par_iter_mut())
             .map(|x| PlayingNoteType::Normal(x))
             .chain(
                 self.long_notes
-                    .iter_mut()
-                    .flat_map(|x| x.play_area.iter_mut().map(|x| PlayingNoteType::Long(x))),
+                    .par_iter_mut()
+                    .flat_map(|x| x.play_area.par_iter_mut().map(|x| PlayingNoteType::Long(x))),
             )
             .filter(|x| {
                 x.is_x_in_range(input.x) && in_time_range(x.get_time()) && x.is_not_started()
@@ -436,22 +446,32 @@ impl Gaming {
                     let idx = note.note_idx;
                     let tg = note.get_timing_group() as usize;
                     self.normal_notes[tg].remove_play_note(idx);
+                    self.combo_counter.accept_result(result);
                     result
                 }
                 PlayingNoteType::Long(note) => {
                     let result = self.judge.get_result(input.time, note.get_time());
                     note.start_result = Some(result);
-                    let idx = note.note_idx;
-                    let tg = note.get_timing_group() as usize;
-                    self.long_notes[tg].remove_play_note(idx);
+                    // let idx = note.note_idx;
+                    // let tg = note.get_timing_group() as usize;
+                    // we remove it when end.
+                    // self.long_notes[tg].remove_play_note(idx);
                     result
                 }
             };
 
-            self.combo_counter.accept_result(result);
             ret = Some(result);
         }
-        // todo: long note holding.
+        self.pointers.insert(pointer, input);
+
+        self.long_notes
+            .par_iter_mut()
+            .flat_map(|x| x.play_area.par_iter_mut())
+            .filter(|x| x.is_x_in_range(input.x))
+            .for_each(|playing_note| {
+                playing_note.holding.insert(pointer);
+            });
+
         ret
     }
 
@@ -460,11 +480,28 @@ impl Gaming {
         input: GamePos,
         pointer: u64,
     ) -> Option<(NoteResult, PlayingNoteType)> {
+        self.pointers.remove(&pointer);
         let time_range = input.time - self.judge.bad..=input.time + self.judge.miss;
-        let in_time_range = |time: OffsetType| time_range.contains(&time);
 
-        // first, we only allow to click one note (long or single)
-        // todo: long note check
+        use rayon::iter::*;
+        self.long_notes
+            .par_iter_mut()
+            .flat_map(|x| x.play_area.par_iter_mut())
+            .filter(|x| x.is_x_in_range(input.x))
+            .for_each(|playing_note| {
+                playing_note.holding.remove(&pointer);
+                if playing_note.holding.is_empty() && playing_note.start_result.is_some() {
+                    for (p, input) in &self.pointers {
+                        if playing_note.is_x_in_range(input.x) {
+                            playing_note.holding.insert(*p);
+                        }
+                    }
+
+                    if playing_note.holding.is_empty() {
+                        playing_note.start_result = Some(NoteResult::Miss);
+                    }
+                }
+            });
         None
     }
 }

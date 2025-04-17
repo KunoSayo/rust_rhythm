@@ -14,6 +14,7 @@ use rodio::{Decoder, OutputStreamHandle, Sink, Source};
 use std::io::{Cursor, Read};
 use std::ops::{Add, Deref};
 use std::time::Duration;
+use egui::ahash::HashMap;
 use tokio::time::Instant;
 use winit::dpi::PhysicalSize;
 use winit::event::WindowEvent;
@@ -28,6 +29,7 @@ pub struct GamingState {
     pub total_duration: Duration,
     pub start_time: Instant,
     hit_feedback: HitFeedback,
+    /// the pointer pos when last update.
     gaming: Gaming,
     game_rect: Rect,
     sink: Sink,

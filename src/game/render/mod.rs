@@ -382,6 +382,7 @@ impl NoteRenderer {
                     &mut to_objs,
                 );
             } else {
+                
                 desc.get_note_render_obj_by_y(
                     viewport_size,
                     current_y,
