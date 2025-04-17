@@ -385,7 +385,7 @@ impl NoteRenderer {
                 
                 desc.get_note_render_obj_by_y(
                     viewport_size,
-                    current_y,
+                    0.0,
                     x.note_end_y - current_y,
                     x,
                     &mut to_objs,
