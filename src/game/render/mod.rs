@@ -1,7 +1,7 @@
 use crate::engine::renderer::texture_renderer::{FragUniform, TextureObject, TextureRenderer};
 use crate::engine::uniform::{create_static_uniform_buffer, uniform_bind_buffer_entry};
 use crate::engine::{MainRendererData, ResourceLocation, ResourceManager, WgpuData};
-use crate::game::beatmap::play::PlayingNote;
+use crate::game::beatmap::play::{NoteResult, PlayingNote};
 use crate::game::note::consts::NOTE_HEIGHT_PIXEL;
 use crate::game::note::{Note, NoteHitType};
 use egui::Rect;
@@ -367,10 +367,14 @@ impl NoteRenderer {
         let NoteRenderer {
             note_desc: desc,
             objs: fgs,
+            background_objs: bgs,
             ..
         } = self;
         let mut to_objs = |obj| {
             fgs.push(obj);
+        };
+        let mut to_bg_objs = |obj| {
+            bgs.push(obj);
         };
         for x in notes {
             if x.start_result.is_none() {
@@ -382,14 +386,24 @@ impl NoteRenderer {
                     &mut to_objs,
                 );
             } else {
+                if let Some(NoteResult::Miss) = x.start_result {
+                    desc.get_note_render_obj_by_y(
+                        viewport_size,
+                        0.0,
+                        x.note_end_y - current_y,
+                        x,
+                        &mut to_bg_objs,
+                    );
+                } else {
+                    desc.get_note_render_obj_by_y(
+                        viewport_size,
+                        0.0,
+                        x.note_end_y - current_y,
+                        x,
+                        &mut to_objs,
+                    );
+                };
                 
-                desc.get_note_render_obj_by_y(
-                    viewport_size,
-                    0.0,
-                    x.note_end_y - current_y,
-                    x,
-                    &mut to_objs,
-                );
             }
         }
     }

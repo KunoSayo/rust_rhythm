@@ -307,6 +307,7 @@ impl BeatMapEditor {
         (nn, ln)
     }
 
+    /// Return the note rect in ui coord.
     fn get_note_rect(&self, game_rect: &Rect, note: &impl Note) -> Rect {
         let x = note.get_x();
         let note_width = note.get_width();
@@ -320,10 +321,10 @@ impl BeatMapEditor {
             let note_end_center_ui_y = self.time_map_ui_y(et as f32 / 1000.0, game_rect);
 
             Rect::from_min_max(
-                Pos2::new(note_ui_left_x, note_center_ui_y - NOTE_HEIGHT_PIXEL * 0.5),
+                Pos2::new(note_ui_left_x, note_end_center_ui_y - NOTE_HEIGHT_PIXEL * 0.5),
                 Pos2::new(
                     note_ui_right_x,
-                    note_end_center_ui_y + NOTE_HEIGHT_PIXEL * 0.5,
+                    note_center_ui_y + NOTE_HEIGHT_PIXEL * 0.5,
                 ),
             )
         } else {
@@ -372,6 +373,7 @@ impl BeatMapEditor {
         (x, result_time)
     }
 
+    /// Get the game pos from mouse pos.
     pub fn get_game_pos(&self, mouse_pos: PhysicalPosition<f32>, game_rect: &Rect) -> GamePos {
         let (x, y) = map_point_to_std_pos_in_rect(&game_rect, Pos2::new(mouse_pos.x, mouse_pos.y));
         let current_time = self.input_cache.current_duration.as_secs_f32();
@@ -850,6 +852,7 @@ impl BeatMapEditor {
     #[inline]
     #[must_use]
     fn time_map_ui_y(&self, time: f32, rect: &Rect) -> f32 {
+        // up y is small.
         rect.center().y - self.time_map_y(time) * rect.height() * 0.5
     }
 
