@@ -256,9 +256,11 @@ impl<T: Note> TrackNotes<T> {
                 }
             } else if let Some(r) = x.start_result {
                 if x.get_end_time_or_time() <= offset {
-                    callback(x, r)
+                    callback(x, r);
+                    false
+                } else {
+                    true
                 }
-                false
             } else {
                 true
             }
@@ -439,7 +441,7 @@ impl Gaming {
 
         let mut ret = None;
         if let Some(first_note) = the_first_note_to_click {
-            let result = match first_note {
+            match first_note {
                 PlayingNoteType::Normal(note) => {
                     let result = self.judge.get_result(input.time, note.get_time());
                     note.start_result = Some(result);
@@ -447,7 +449,7 @@ impl Gaming {
                     let tg = note.get_timing_group() as usize;
                     self.normal_notes[tg].remove_play_note(idx);
                     self.combo_counter.accept_result(result);
-                    result
+                    ret = Some(result);
                 }
                 PlayingNoteType::Long(note) => {
                     let result = self.judge.get_result(input.time, note.get_time());
@@ -456,11 +458,8 @@ impl Gaming {
                     // let tg = note.get_timing_group() as usize;
                     // we remove it when end.
                     // self.long_notes[tg].remove_play_note(idx);
-                    result
                 }
             };
-
-            ret = Some(result);
         }
         self.pointers.insert(pointer, input);
 
