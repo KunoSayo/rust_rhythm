@@ -96,12 +96,18 @@ impl BeatMapEditor {
 
                             const ID: &'static str = "BPM_EDIT";
 
-                            self.dirty |= optional_edit(ui, ID, "Set BPM", &mut tl.set_bpm, Bpm::default());
+                            let mut timing_dirty = false;
+                            timing_dirty |= optional_edit(ui, ID, "Set BPM", &mut tl.set_bpm, Bpm::default());
 
                             ui.separator();
                             const SET_SPEED: &'static str = "Set Speed";
-                            self.dirty |= optional_edit(ui, SET_SPEED, SET_SPEED, &mut tl.set_speed, 1.0);
+                            timing_dirty |= optional_edit(ui, SET_SPEED, SET_SPEED, &mut tl.set_speed, 1.0);
                             tl.set_speed = tl.set_speed.map(|x| x.clamp(0.01, 10.0));
+                            
+                            if timing_dirty {
+                                self.beatmap.timing_group.timing_lines[self.input_cache.select_timing_group].update();
+                            }
+                            self.dirty |= timing_dirty
                         }
                     }
                 });

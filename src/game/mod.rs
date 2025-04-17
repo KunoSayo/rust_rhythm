@@ -15,8 +15,16 @@ pub mod beatmap;
 pub mod timing;
 pub mod render;
 
+#[inline]
+#[must_use]
 pub fn secs_to_offset_type(sec: f32) -> OffsetType {
     (sec * 1000.0).round() as OffsetType
+}
+
+#[inline]
+#[must_use]
+pub fn offset_type_to_secs(offset: OffsetType) -> f32 {
+    offset as f32 / 1000.0
 }
 
 pub fn get_play_rect(rect: Rect) -> Rect {
