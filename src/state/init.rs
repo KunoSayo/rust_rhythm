@@ -26,8 +26,16 @@ impl InitState {
     #[allow(unused)]
     pub async fn init_tasks(device: Arc<Device>, queue: Arc<Queue>, res: Arc<ResourceManager>) {
         let note = image::load_from_memory(&res.load_asset("texture/note.png").unwrap()).unwrap();
+        let note_bottom = image::load_from_memory(&res.load_asset("texture/long_bottom.png").unwrap()).unwrap();
+        let note_top = image::load_from_memory(&res.load_asset("texture/long_top.png").unwrap()).unwrap();
+        let note_mid = image::load_from_memory(&res.load_asset("texture/long_mid.png").unwrap()).unwrap();
 
-        let atlas = TextureAtlas::make_atlas(&device, &queue, &[(ResourceLocation::from_name("note"), &note)]).unwrap();
+        let mut data = vec![];
+        data.push((ResourceLocation::from_name("note"), &note));
+        data.push((ResourceLocation::from_name("long_bottom"), &note_bottom));
+        data.push((ResourceLocation::from_name("long_top"), &note_top));
+        data.push((ResourceLocation::from_name("long_mid"), &note_mid));
+        let atlas = TextureAtlas::make_atlas(&device, &queue, &data).unwrap();
         res.atlas.insert(ResourceLocation::from_name("default"), atlas.into());
     }
 }

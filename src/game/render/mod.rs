@@ -1,6 +1,7 @@
 use crate::engine::renderer::texture_renderer::{FragUniform, TextureObject, TextureRenderer};
 use crate::engine::uniform::{create_static_uniform_buffer, uniform_bind_buffer_entry};
 use crate::engine::{MainRendererData, ResourceLocation, ResourceManager, WgpuData};
+use crate::game::beatmap::play::PlayingNote;
 use crate::game::note::consts::NOTE_HEIGHT_PIXEL;
 use crate::game::note::{Note, NoteHitType};
 use egui::Rect;
@@ -10,7 +11,6 @@ use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer,
     CommandEncoderDescriptor, Device,
 };
-use crate::game::beatmap::play::PlayingNote;
 
 pub struct NoteRenderDesc {
     // Left, Middle, Right
@@ -73,9 +73,11 @@ impl NoteRenderDesc {
 
         let center_y = ((note.get_time() as f32 / 1000.0) - center_secs) * time_scale;
         if let Some(et) = note.get_end_time() {
+            // we are long note.
+            // getting bottom obj to render.
             let up = center_y + self.note_half_height * 2.0 / viewport_size.1;
             let down = center_y - self.note_half_height * 2.0 / viewport_size.1;
-            let mid_down = up;
+            let mid_down = center_y;
             self.get_obj(
                 left_x,
                 right_x,
@@ -85,10 +87,10 @@ impl NoteRenderDesc {
                 &self.long_coords[2],
                 &mut consume,
             );
-            let center_y = ((et as f32 / 1000.0) - center_secs) * time_scale;
-            let up = center_y + self.note_half_height * 2.0 / viewport_size.1;
-            let down = center_y - self.note_half_height * 2.0 / viewport_size.1;
-            let mid_up = down;
+            let ender_time_center_y = ((et as f32 / 1000.0) - center_secs) * time_scale;
+            let up = ender_time_center_y + self.note_half_height * 2.0 / viewport_size.1;
+            let down = ender_time_center_y - self.note_half_height * 2.0 / viewport_size.1;
+            let mid_up = ender_time_center_y;
             self.get_obj(
                 left_x,
                 right_x,
@@ -153,7 +155,7 @@ impl NoteRenderDesc {
         if let Some(et) = note.get_end_time() {
             let up = note_center_y + self.note_half_height * 2.0 / viewport_size.1;
             let down = note_center_y - self.note_half_height * 2.0 / viewport_size.1;
-            let mid_down = up;
+            let mid_down = note_center_y;
             self.get_obj(
                 left_x,
                 right_x,
@@ -165,7 +167,7 @@ impl NoteRenderDesc {
             );
             let up = note_end_y + self.note_half_height * 2.0 / viewport_size.1;
             let down = note_end_y - self.note_half_height * 2.0 / viewport_size.1;
-            let mid_up = down;
+            let mid_up = note_end_y;
             self.get_obj(
                 left_x,
                 right_x,
@@ -252,7 +254,7 @@ impl NoteRenderer {
         vp: &Rect,
     ) {
         let device = &gpu.device;
-        let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor { label: None });
+        let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor { label: Some("Note Renderer") });
 
         tr.render(
             device,
@@ -315,7 +317,29 @@ impl NoteRenderer {
             .expect("Failed to get normal note tex coords");
 
         // todo: long texture.
-        let long_coords = Default::default();
+        let long_coords = [
+            atlas
+                .get_tex_coord_left_right_slice(
+                    &ResourceLocation::from_name("long_top"),
+                    16.0,
+                    16.0,
+                )
+                .expect("Failed to get long top"),
+            atlas
+                .get_tex_coord_left_right_slice(
+                    &ResourceLocation::from_name("long_mid"),
+                    16.0,
+                    16.0,
+                )
+                .expect("Failed to get long mid"),
+            atlas
+                .get_tex_coord_left_right_slice(
+                    &ResourceLocation::from_name("long_bottom"),
+                    16.0,
+                    16.0,
+                )
+                .expect("Failed to get long bottom"),
+        ];
         let slide_coords = Default::default();
         Self {
             gray_tint_buffer,
@@ -334,8 +358,12 @@ impl NoteRenderer {
         }
     }
 
-    pub fn collect_playing_notes<T: Note>(&mut self, notes: &[PlayingNote<T>],
-                                  viewport_size: (f32, f32), current_y: f32) {
+    pub fn collect_playing_notes<T: Note>(
+        &mut self,
+        notes: &[PlayingNote<T>],
+        viewport_size: (f32, f32),
+        current_y: f32,
+    ) {
         let NoteRenderer {
             note_desc: desc,
             objs: fgs,
@@ -345,14 +373,23 @@ impl NoteRenderer {
             fgs.push(obj);
         };
         for x in notes {
-            desc.get_note_render_obj_by_y(
-                viewport_size,
-                x.note_y - current_y,
-                x.note_end_y - current_y,
-                x,
-                &mut to_objs,
-            );
+            if x.start_result.is_none() {
+                desc.get_note_render_obj_by_y(
+                    viewport_size,
+                    x.note_y - current_y,
+                    x.note_end_y - current_y,
+                    x,
+                    &mut to_objs,
+                );
+            } else {
+                desc.get_note_render_obj_by_y(
+                    viewport_size,
+                    current_y,
+                    x.note_end_y - current_y,
+                    x,
+                    &mut to_objs,
+                );
+            }
         }
-
     }
 }

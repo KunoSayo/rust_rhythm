@@ -10,6 +10,7 @@ use rectangle_pack::{
 };
 use std::collections::BTreeMap;
 use std::ops::{Add, Sub};
+use log::info;
 use wgpu::Queue;
 
 #[derive(Debug)]
@@ -123,6 +124,7 @@ impl TextureAtlas {
 
         let texture = TextureWrapper::from_image(device, queue, &img, Some("Texture Atlas"))?;
 
+        info!("Got atlas locs {:?}", locs);
         Ok(Self { texture, locs })
     }
 }

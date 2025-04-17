@@ -49,6 +49,10 @@ impl MouseState {
             false
         }
     }
+
+    pub fn is_released(&self) -> bool {
+        !self.left_click && self.last_left_click
+    }
 }
 
 #[derive(Default)]

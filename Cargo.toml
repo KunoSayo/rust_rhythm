@@ -34,7 +34,7 @@ futures = { version = "0.3.24", features = ["executor", "thread-pool"] }
 # audio
 rodio = "0.20.1"
 cpal = "0.15.3"
-rubato = { version = "0.16.1" }
+rubato = { version = "0.16.2" }
 
 # functions
 toml_edit = "0.22.13"
@@ -67,6 +67,8 @@ android = ["winit/android-native-activity"]
 [profile.release]
 codegen-units = 1
 
+[profile.dev.package.rubato]
+opt-level = 3
 
 [target.'cfg(target_os = "android")'.dependencies]
 ndk = { version = "0.9.0", features = [] }

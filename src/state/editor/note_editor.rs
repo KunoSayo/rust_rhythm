@@ -467,6 +467,16 @@ impl BeatMapEditor {
         }
     }
 
+    fn collect_background_note(&self, note: &impl Note, game_rect: &Rect, nr: &mut NoteRenderer) {
+        nr.note_desc.get_note_render_obj(
+            (game_rect.width(), game_rect.height()),
+            self.input_cache.current_duration.as_secs_f32(),
+            1.0 / self.input_cache.progress_half_time,
+            note,
+            |obj| nr.background_objs.push(obj),
+        );
+    }
+
     fn normal_note_pointer_update(&mut self, s: &mut StateData, ui: &mut Ui, game_rect: &Rect) {
         let pos = s.app.inputs.mouse_state.pos;
         if !game_rect.contains([pos.x, pos.y].into()) {
@@ -495,15 +505,71 @@ impl BeatMapEditor {
                         ));
                     self.dirty = true;
                 }
+                let nr = s.app.world.get_mut::<NoteRenderer>().unwrap();
+                self.collect_background_note(&note_to_place, game_rect, nr);
+            }
+        }
+    }
+
+    /// Function to update cursor, render the situation.
+    fn long_note_pointer_update(
+        &mut self,
+        s: &mut StateData,
+        ui: &mut Ui,
+        game_rect: &Rect,
+        start_pos: Option<GamePos>,
+    ) {
+        let pos = s.app.inputs.mouse_state.pos;
+        if !game_rect.contains([pos.x, pos.y].into()) && start_pos.is_none() {
+            return;
+        }
+        let place_note_pos = self.get_note_pos_for_cursor(s, game_rect);
+        let start_pos = start_pos.unwrap_or(GamePos::new(place_note_pos.0, place_note_pos.1));
+        let note_width = self.get_place_note_width();
+
+        let note_to_place = LongNote {
+            x: start_pos.x,
+            width: note_width,
+            start_time: start_pos.time.min(place_note_pos.1),
+            timing_group: self.input_cache.select_timing_group as u8,
+            end_time: place_note_pos.1.max(start_pos.time),
+        };
+
+        if !self
+            .input_cache
+            .edit_data
+            .contains_long_note(&note_to_place)
+        {
+            if self.allow_update {
+                match self.input_cache.edit_data.cursor {
+                    PointerType::LongNote(None) => {
+                        if s.app.inputs.mouse_state.left_click {
+                            self.input_cache.edit_data.cursor =
+                                PointerType::LongNote(Some(start_pos));
+                        }
+                    }
+                    PointerType::LongNote(Some(start_pos)) => {
+                        if s.app.inputs.mouse_state.is_released() {
+                            if note_to_place.start_time != note_to_place.end_time {
+                                self.input_cache.edit_data.do_cmd_with_record(
+                                    EditCommand::EditNote(
+                                        EditOps::Add,
+                                        vec![],
+                                        vec![note_to_place],
+                                    ),
+                                );
+                            }
+                            self.dirty = true;
+                        }
+                        if !s.app.inputs.mouse_state.left_click {
+                            self.input_cache.edit_data.cursor = PointerType::LongNote(None);
+                        }
+                    }
+                    _ => {}
+                }
             }
             let nr = s.app.world.get_mut::<NoteRenderer>().unwrap();
-            nr.note_desc.get_note_render_obj(
-                (game_rect.width(), game_rect.height()),
-                self.input_cache.current_duration.as_secs_f32(),
-                1.0 / self.input_cache.progress_half_time,
-                &note_to_place,
-                |obj| nr.background_objs.push(obj),
-            );
+            self.collect_background_note(&note_to_place, game_rect, nr);
         }
     }
 
@@ -569,7 +635,27 @@ impl BeatMapEditor {
                 .edit_data
                 .long_notes
                 .range(start_time..=end_time)
-            {}
+            {
+                for note in x.1 {
+                    if note.timing_group == self.input_cache.select_timing_group as u8 {
+                        desc.get_note_render_obj(
+                            viewport_size,
+                            center_time,
+                            time_scale,
+                            note,
+                            &mut to_fg,
+                        );
+                    } else {
+                        desc.get_note_render_obj(
+                            viewport_size,
+                            center_time,
+                            time_scale,
+                            note,
+                            &mut to_bg,
+                        );
+                    };
+                }
+            }
         }
 
         match &self.input_cache.edit_data.cursor {
@@ -579,7 +665,9 @@ impl BeatMapEditor {
             PointerType::NormalNote => {
                 self.normal_note_pointer_update(s, ui, game_rect);
             }
-            PointerType::LongNote(start_pos) => {}
+            PointerType::LongNote(start_pos) => {
+                self.long_note_pointer_update(s, ui, game_rect, start_pos.clone());
+            }
         }
 
         let tr = s.app.world.fetch::<TextureRenderer>();
@@ -683,7 +771,6 @@ impl BeatMapEditor {
                 let rect = ui.max_rect();
                 let center_point = rect.center();
                 // 4:3 current
-            
 
                 let rect = get_play_rect(rect);
 

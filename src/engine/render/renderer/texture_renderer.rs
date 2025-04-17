@@ -149,7 +149,7 @@ impl TextureRenderer {
         });
         let targets = [Some(ColorTargetState {
             format: gpu.surface_cfg.format,
-            blend: Some(BlendState::REPLACE),
+            blend: Some(BlendState::ALPHA_BLENDING),
             write_mask: ColorWrites::ALL,
         })];
 

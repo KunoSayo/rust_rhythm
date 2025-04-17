@@ -1,3 +1,4 @@
+use log::info;
 use rodio::OutputStreamHandle;
 use rubato::{
     Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction,
@@ -49,8 +50,9 @@ pub fn sample_change_speed(samples: &[i16], channels: usize, speed: f32) -> Vec<
         }
     });
 
+    info!("Process sample to speed {speed}");
     let result_data = resampler.process(&chunks, None).expect("Failed to process");
-
+    info!("Processed sample to speed {speed}");
     // [[Channel data]; channel count]
     // so we should rearrange it.
 

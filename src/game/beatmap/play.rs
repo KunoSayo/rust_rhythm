@@ -75,7 +75,7 @@ pub struct PlayingNote<NoteType> {
     pub note_idx: usize,
     pub note_y: f32,
     pub note_end_y: f32,
-    start_result: Option<NoteResult>,
+    pub start_result: Option<NoteResult>,
     // the pointer holding this note.
     holding: Vec<u64>,
 }
