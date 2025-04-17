@@ -729,11 +729,7 @@ impl BeatMapEditor {
 
                         let left_center = (progress_start, y_center);
                         let right_center = (progress_end, y_center);
-                        painter.vline(
-                            progress_start + progress_width * cur_progress,
-                            y_range.clone(),
-                            Stroke::new(1.0, Color32::RED),
-                        );
+
                         for x in self.beatmap.timing_group.get_timing(self.input_cache.select_timing_group, 0) {
                             let progress = offset_type_to_secs(x.offset) / self.total_duration.as_secs_f32();
 
@@ -751,6 +747,11 @@ impl BeatMapEditor {
                                 );
                             }
                         }
+                        painter.vline(
+                            progress_start + progress_width * cur_progress,
+                            y_range.clone(),
+                            Stroke::new(1.0, Color32::RED),
+                        );
                         painter.hline(
                             progress_start..=progress_end,
                             start_point.y + height * 0.5,
