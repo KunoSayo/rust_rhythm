@@ -20,7 +20,6 @@ pub enum NoteResult {
 pub struct NoteHitResult {
     pub grade: NoteResult,
     pub delta: OffsetType,
-
 }
 
 impl NoteHitResult {
@@ -78,7 +77,6 @@ impl Default for PlayOptions {
     }
 }
 
-#[derive(Default)]
 pub struct ScoreCounter {
     total_result: u32,
     max_combo: u32,
@@ -129,13 +127,22 @@ impl ScoreCounter {
         result_map.insert(NoteResult::Good, 0);
         result_map.insert(NoteResult::Great, 0);
         result_map.insert(NoteResult::Perfect, 0);
-        Self { total_result, max_combo: 0, combo: 0, result_map, deltas: Vec::with_capacity(total_result as usize) }
+        Self {
+            total_result,
+            max_combo: 0,
+            combo: 0,
+            result_map,
+            deltas: Vec::with_capacity(total_result as usize),
+        }
     }
 
     pub fn get_score(&self) -> u32 {
         let mx_score = 1_000_000;
         let mut result = 0;
         result += self.result_map[&NoteResult::Perfect] * mx_score / self.total_result;
+        result += self.result_map[&NoteResult::Great] * mx_score / 2 / self.total_result;
+        result += self.result_map[&NoteResult::Good] * mx_score / 4 / self.total_result;
+        result += self.result_map[&NoteResult::Bad] * mx_score / 5 / self.total_result;
 
         result
     }
@@ -345,7 +352,7 @@ pub struct Gaming {
     pub normal_notes: Vec<TrackNotes<NormalNote>>,
     pub long_notes: Vec<TrackNotes<LongNote>>,
     pointers: HashMap<u64, GamePos>,
-    pub combo_counter: ScoreCounter,
+    pub score_counter: ScoreCounter,
 }
 
 impl Gaming {
@@ -356,7 +363,7 @@ impl Gaming {
     ) {
         for x in self.normal_notes.iter_mut() {
             x.tick(&self.ops, &self.judge, game_time, |note, result| {
-                self.combo_counter.accept_result(result);
+                self.score_counter.accept_result(result);
                 if let Some(cb) = &mut callback {
                     cb(PlayingNoteType::Normal(note), result);
                 }
@@ -364,7 +371,7 @@ impl Gaming {
         }
         for x in self.long_notes.iter_mut() {
             x.tick(&self.ops, &self.judge, game_time, |note, result| {
-                self.combo_counter.accept_result(result);
+                self.score_counter.accept_result(result);
                 if let Some(cb) = &mut callback {
                     cb(PlayingNoteType::Long(note), result);
                 }
@@ -434,7 +441,7 @@ impl Gaming {
             normal_notes,
             long_notes,
             pointers: Default::default(),
-            combo_counter: Default::default(),
+            score_counter: ScoreCounter::new(total_notes as u32),
         }
     }
 
@@ -483,7 +490,7 @@ impl Gaming {
                     let idx = note.note_idx;
                     let tg = note.get_timing_group() as usize;
                     self.normal_notes[tg].remove_play_note(idx);
-                    self.combo_counter.accept_result(result);
+                    self.score_counter.accept_result(result);
                     ret = Some(result);
                 }
                 PlayingNoteType::Long(note) => {
@@ -532,9 +539,12 @@ impl Gaming {
                         }
 
                         if playing_note.holding.is_empty() {
-                            let cur_result = self.judge.get_result(input.time, playing_note.note.end_time);
+                            let cur_result = self
+                                .judge
+                                .get_result(input.time, playing_note.note.end_time);
                             if cur_result.grade != NoteResult::Perfect {
-                                playing_note.start_result = Some(NoteHitResult::new(NoteResult::Miss, start_result.delta));
+                                playing_note.start_result =
+                                    Some(NoteHitResult::new(NoteResult::Miss, start_result.delta));
                             }
                         }
                     }

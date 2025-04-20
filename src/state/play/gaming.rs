@@ -8,17 +8,16 @@ use crate::game::render::NoteRenderer;
 use crate::game::song::SongInfo;
 use crate::game::{get_play_rect, secs_to_offset_type};
 use anyhow::anyhow;
-use egui::{Align, Color32, Context, Frame, Layout, Pos2, Rect, RichText, Stroke, Vec2};
+use egui::{Align, Color32, Context, Frame, Layout, Pos2, Rect, RichText, Stroke, Vec2, Widget};
 use rodio::buffer::SamplesBuffer;
 use rodio::{Decoder, OutputStreamHandle, Sink, Source};
 use std::io::{Cursor, Read};
 use std::ops::{Add, Deref};
 use std::time::Duration;
-use egui::ahash::HashMap;
 use tokio::time::Instant;
 use winit::dpi::PhysicalSize;
 use winit::event::WindowEvent;
-use winit::keyboard::{Key, KeyCode, PhysicalKey};
+use winit::keyboard::{KeyCode, PhysicalKey};
 
 #[derive(Default)]
 pub struct HitFeedback {
@@ -172,6 +171,13 @@ impl GameState for GamingState {
         egui::CentralPanel::default()
             .frame(Frame::NONE)
             .show(ctx, |ui| {
+                ui.with_layout(Layout::right_to_left(Align::TOP), |ui| {
+                    ui.label(
+                        RichText::new(format!("{:06}", self.gaming.score_counter.get_score()))
+                            .size(99.0),
+                    );
+                });
+
                 ui.painter().hline(
                     ui.max_rect().x_range(),
                     self.game_rect.center().y,
@@ -180,7 +186,7 @@ impl GameState for GamingState {
 
                 ui.with_layout(Layout::bottom_up(Align::Center), |ui| {
                     ui.no_select_text(
-                        format!("{}", self.gaming.combo_counter.get_combo()),
+                        format!("{}", self.gaming.score_counter.get_combo()),
                         [300.0, 100.0],
                     );
                     if let Some(last_result) = self.hit_feedback.last_result {
