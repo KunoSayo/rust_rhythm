@@ -213,7 +213,14 @@ impl GameState for GamingState {
                     let score = self
                         .score_display
                         .mark_score(self.gaming.score_counter.get_score());
-                    ui.label(RichText::new(format!("{:06}", score)).size(99.0));
+                    let score_str = format!("{:06}", score);
+                    for x in score_str.chars().rev() {
+                        let used = ui.label(RichText::new(x).size(99.0)).rect.width();
+                        let left = 62.0 - used;
+                        if left > 0.0 {
+                            ui.add_space(left);
+                        }
+                    }
                 });
 
                 ui.painter().hline(
