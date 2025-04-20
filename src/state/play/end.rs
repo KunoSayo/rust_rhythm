@@ -133,7 +133,7 @@ impl GameState for EndResultState {
                                     cur_cnt as f32 * bar_height / self.result.hit_summary.mx as f32;
                                 let bar_rect = Rect::from_min_max(
                                     Pos2::new(mid + 1.0, bar_base_y - current_height),
-                                    Pos2::new(mid + 1.0 + cell_width, bar_base_y),
+                                    Pos2::new(mid - 1.0 + cell_width, bar_base_y),
                                 );
                                 ui.painter().rect_filled(bar_rect, 0.0, Color32::DARK_GREEN);
 
