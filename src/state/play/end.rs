@@ -161,7 +161,9 @@ impl GameState for EndResultState {
                                 );
                             }
 
-                            if idx & 1 == 0 {
+                            // < 0 require 0
+                            // > 0 require 1
+                            if idx & 1 == if number < 0 { 0 } else { 1 } {
                                 ui.allocate_new_ui(UiBuilder::new().max_rect(text_rect), |ui| {
                                     ui.centered_and_justified(|ui| {
                                         ui.add_sized(

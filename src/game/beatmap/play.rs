@@ -2,10 +2,9 @@ use crate::game::beatmap::file::SongBeatmapFile;
 use crate::game::beatmap::GamePos;
 use crate::game::note::{LongNote, NormalNote, Note, NoteExt, NoteHitType};
 use crate::game::timing::{TimingGroup, TimingLine};
-use crate::game::{secs_to_offset_type, OffsetType};
+use crate::game::{offset_type_to_secs, secs_to_offset_type, OffsetType};
 use egui::ahash::{HashMap, HashSet};
 use std::collections::VecDeque;
-use std::time::Instant;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum NoteResult {
@@ -163,7 +162,7 @@ impl ScoreCounter {
         }
         let mx_score = 1_000_000;
         let mut result = 0;
-        
+
         result += self.result_map[&NoteResult::Perfect] * mx_score / self.total_result;
         result += self.result_map[&NoteResult::Great] * mx_score / 2 / self.total_result;
         result += self.result_map[&NoteResult::Good] * mx_score / 4 / self.total_result;
@@ -290,6 +289,8 @@ impl<T> Default for TrackNotes<T> {
     }
 }
 impl<T: Note> TrackNotes<T> {
+    /// Tick the track.
+    /// The callback will be called before the start result set.
     pub fn tick(
         &mut self,
         ops: &PlayOptions,
@@ -350,6 +351,7 @@ pub struct Gaming {
     pub long_notes: Vec<TrackNotes<LongNote>>,
     pointers: HashMap<u64, GamePos>,
     pub score_counter: ScoreCounter,
+    pub auto_play: bool,
 }
 
 impl Gaming {
@@ -359,6 +361,22 @@ impl Gaming {
         mut callback: Option<impl FnMut(PlayingNoteType, NoteHitResult)>,
     ) {
         for x in self.normal_notes.iter_mut() {
+            if self.auto_play {
+                while let Some(note) = x.play_area.front_mut() {
+                    let delta = offset_type_to_secs(note.note.time) - game_time;
+                    if delta <= 0.001 {
+                        let result = NoteHitResult::new(NoteResult::Perfect, 0);
+                        if let Some(cb) = &mut callback {
+                            cb(PlayingNoteType::Normal(note), result);
+                        }
+                        self.score_counter.accept_result(result);
+
+                        x.play_area.pop_front();
+                    } else {
+                        break;
+                    }
+                }
+            }
             x.tick(&self.ops, &self.judge, game_time, |note, result| {
                 self.score_counter.accept_result(result);
                 if let Some(cb) = &mut callback {
@@ -367,6 +385,29 @@ impl Gaming {
             });
         }
         for x in self.long_notes.iter_mut() {
+            if self.auto_play {
+                x.play_area.retain_mut(|note| {
+                    let delta = offset_type_to_secs(note.note.start_time) - game_time;
+                    let end_delta = offset_type_to_secs(note.note.end_time) - game_time;
+                    if delta <= 0.001 && note.start_result.is_none() {
+                        let result = NoteHitResult::new(NoteResult::Perfect, 0);
+                        if let Some(cb) = &mut callback {
+                            cb(PlayingNoteType::Long(note), result);
+                        }
+                        note.start_result = Some(result);
+                    }
+                    if end_delta <= 0.001 {
+                        let result = NoteHitResult::new(NoteResult::Perfect, 0);
+                        self.score_counter.accept_result(result);
+                        if let Some(cb) = &mut callback {
+                            cb(PlayingNoteType::Long(note), result);
+                        }
+                        note.start_result = Some(result);
+                        return false;
+                    }
+                    true
+                });
+            }
             x.tick(&self.ops, &self.judge, game_time, |note, result| {
                 self.score_counter.accept_result(result);
                 if let Some(cb) = &mut callback {
@@ -439,6 +480,7 @@ impl Gaming {
             long_notes,
             pointers: Default::default(),
             score_counter: ScoreCounter::new(total_notes as u32),
+            auto_play: false,
         }
     }
 
@@ -453,6 +495,7 @@ impl Gaming {
     /// return the note hit result, and if it is long start.
     pub fn process_input(&mut self, input: GamePos, pointer: u64) -> Option<(NoteHitResult, bool)> {
         let time_range = input.time - self.judge.bad..=input.time + self.judge.miss;
+        let long_time_range = input.time - self.judge.bad..=input.time + self.judge.bad;
         let in_time_range = |time: OffsetType| time_range.contains(&time);
 
         // first, we only allow to click one note (long or single)
@@ -461,15 +504,15 @@ impl Gaming {
             .normal_notes
             .par_iter_mut()
             .flat_map(|x| x.play_area.par_iter_mut())
+            .filter(|x| in_time_range(x.note.time))
             .map(|x| PlayingNoteType::Normal(x))
-            .chain(
-                self.long_notes
+            .chain(self.long_notes.par_iter_mut().flat_map(|x| {
+                x.play_area
                     .par_iter_mut()
-                    .flat_map(|x| x.play_area.par_iter_mut().map(|x| PlayingNoteType::Long(x))),
-            )
-            .filter(|x| {
-                x.is_x_in_range(input.x) && in_time_range(x.get_time()) && x.is_not_started()
-            })
+                    .filter(|x| long_time_range.contains(&x.note.start_time))
+                    .map(|x| PlayingNoteType::Long(x))
+            }))
+            .filter(|x| x.is_x_in_range(input.x) && x.is_not_started())
             .min_by(|a, b| {
                 a.get_time().cmp(&b.get_time()).then(
                     (a.get_x() - input.x)
@@ -546,7 +589,7 @@ impl Gaming {
                             }
                         }
 
-                        if playing_note.holding.is_empty() {
+                        if playing_note.holding.is_empty() && !self.auto_play {
                             let cur_result = self
                                 .judge
                                 .get_result(input.time, playing_note.note.end_time);

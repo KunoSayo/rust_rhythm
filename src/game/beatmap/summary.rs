@@ -15,11 +15,11 @@ pub struct BeatmapPlayResult {
 impl HitSummary {
     #[inline]
     pub const fn start_offset() -> OffsetType {
-        -305
+        -205
     }
     #[inline]
     pub fn bottom_numbers() -> impl Iterator<Item = OffsetType> {
-        (0..).map(|i| i * 10 + Self::start_offset()).take_while(|x| *x <= 305)
+        (0..).map(|i| i * 10 + Self::start_offset()).take_while(|x| *x <= 205)
     }
 }
 

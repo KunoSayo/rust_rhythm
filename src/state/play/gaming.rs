@@ -170,6 +170,10 @@ impl GameState for GamingState {
         {
             trans = Trans::Pop;
         }
+        if s.app.inputs.is_pressed(&[PhysicalKey::Code(KeyCode::Tab)])
+        {
+            self.gaming.auto_play = !self.gaming.auto_play;
+        }
         match &mut self.end_remaining {
             Some(x) => {
                 *x -= s.dt;
@@ -197,10 +201,24 @@ impl GameState for GamingState {
         self.gaming.tick(
             game_time,
             Some(|note: PlayingNoteType<'_>, result: NoteHitResult| {
-                // we ignore the long note result.
+                // auto play will play during tick.
                 if result.is_miss() {
-                    // we only care miss.
+                    // The miss we should care.
                     self.hit_feedback.last_result = Some((result, Instant::now()));
+                } else {
+                    match note {
+                        PlayingNoteType::Normal(_) => {
+                            self.hit_feedback.last_result = Some((result, Instant::now()));
+                            s.app.audio.as_mut().unwrap().play_sfx(&tick_sound_res);
+                        }
+                        PlayingNoteType::Long(note) => {
+                            if note.start_result.is_none() {
+                                s.app.audio.as_mut().unwrap().play_sfx(&tick_sound_res);
+                            } else {
+                                // we ignore the end result of long note.
+                            }
+                        }
+                    }
                 }
             }),
         );
@@ -287,40 +305,47 @@ impl GameState for GamingState {
                     device_id,
                     event,
                     is_synthetic,
-                } => match event.physical_key {
-                    PhysicalKey::Code(code) => match code {
-                        _ => {
-                            let input_game_time =
-                                self.get_game_time() - time.elapsed().as_secs_f32();
+                } => {
+                    if *is_synthetic || event.repeat {
+                        return;
+                    }
+                    match event.physical_key {
+                        PhysicalKey::Code(code) => match code {
+                            _ => {
+                                let input_game_time =
+                                    self.get_game_time() - time.elapsed().as_secs_f32();
 
-                            let input_x = match code {
-                                KeyCode::KeyD => FOUR_KEY_X[0],
-                                KeyCode::KeyF => FOUR_KEY_X[1],
-                                KeyCode::KeyJ => FOUR_KEY_X[2],
-                                KeyCode::KeyK => FOUR_KEY_X[3],
-                                _ => return,
-                            };
-                            let game_input =
-                                GamePos::new(input_x, secs_to_offset_type(input_game_time));
-                            let tick_sound_res: ResourceLocation =
-                                ResourceLocation::from_name("tick");
-                            if event.state.is_pressed() {
-                                if let Some((result, is_long)) = self
-                                    .gaming
-                                    .process_input(game_input, ((input_x + 0.75) * 4.0) as _)
-                                {
-                                    self.hit_feedback.last_result = Some((result, Instant::now()));
-                                    if !result.is_miss() {
-                                        s.app.audio.as_mut().unwrap().play_sfx(&tick_sound_res);
+                                let input_x = match code {
+                                    KeyCode::KeyD => FOUR_KEY_X[0],
+                                    KeyCode::KeyF => FOUR_KEY_X[1],
+                                    KeyCode::KeyJ => FOUR_KEY_X[2],
+                                    KeyCode::KeyK => FOUR_KEY_X[3],
+                                    _ => return,
+                                };
+                                let game_input =
+                                    GamePos::new(input_x, secs_to_offset_type(input_game_time));
+
+
+                                if event.state.is_pressed() {
+                                    if let Some((result, is_long)) = self
+                                        .gaming
+                                        .process_input(game_input, ((input_x + 0.75) * 4.0) as _)
+                                    {
+                                        self.hit_feedback.last_result = Some((result, Instant::now()));
+                                        if !result.is_miss() {
+                                            let tick_sound_res: ResourceLocation =
+                                                ResourceLocation::from_name("tick");
+                                            s.app.audio.as_mut().unwrap().play_sfx(&tick_sound_res);
+                                        }
                                     }
+                                } else {
+                                    self.gaming
+                                        .process_input_leave(game_input, ((input_x + 0.75) * 4.0) as _);
                                 }
-                            } else {
-                                self.gaming
-                                    .process_input_leave(game_input, ((input_x + 0.75) * 4.0) as _);
                             }
-                        }
-                    },
-                    PhysicalKey::Unidentified(_) => {}
+                        },
+                        PhysicalKey::Unidentified(_) => {}
+                    }
                 },
                 WindowEvent::Resized(size) => self.update_game_region(*size),
                 _ => {}
