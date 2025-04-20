@@ -12,7 +12,9 @@ use crate::game::song::SongInfo;
 use crate::game::{get_play_rect, secs_to_offset_type};
 use crate::state::play::end::EndResultState;
 use anyhow::anyhow;
-use egui::{Align, Color32, Context, Frame, Layout, Pos2, Rect, RichText, Stroke, Vec2, Widget};
+use egui::{
+    Align, Color32, Context, Frame, Layout, Pos2, Rect, RichText, Stroke, TextStyle, Vec2, Widget,
+};
 use rodio::buffer::SamplesBuffer;
 use rodio::{Decoder, OutputStreamHandle, Sink, Source};
 use std::io::{Cursor, Read};
@@ -69,7 +71,7 @@ pub struct GamingState {
     pub start_time: Instant,
     hit_feedback: HitFeedback,
     /// the pointer pos when last update.
-    gaming: Gaming,
+    gaming: Box<Gaming>,
     game_rect: Rect,
     sink: Sink,
     score_display: ScoreDisplay,
@@ -129,7 +131,7 @@ impl GamingState {
             total_duration,
             start_time: Instant::now(),
             hit_feedback: Default::default(),
-            gaming: Gaming::load_game(beatmap_file),
+            gaming: Box::new(Gaming::load_game(beatmap_file)),
             game_rect: Rect::ZERO,
             sink,
             score_display: Default::default(),
@@ -172,9 +174,7 @@ impl GameState for GamingState {
             Some(x) => {
                 *x -= s.dt;
                 if (*x <= 0.0) {
-                    trans = Trans::Switch(Box::new(EndResultState {
-                        result: BeatmapPlayResult::from_game(&self.gaming),
-                    }));
+                    trans = Trans::IntoSwitch;
                 }
                 self.sink
                     .set_volume(0.0_f32.max(self.sink.volume() - s.dt / 3.0))
@@ -196,8 +196,12 @@ impl GameState for GamingState {
         let tick_sound_res: ResourceLocation = ResourceLocation::from_name("tick");
         self.gaming.tick(
             game_time,
-            Some(|_note: PlayingNoteType<'_>, _result| {
+            Some(|note: PlayingNoteType<'_>, result: NoteHitResult| {
                 // we ignore the long note result.
+                if result.is_miss() {
+                    // we only care miss.
+                    self.hit_feedback.last_result = Some((result, Instant::now()));
+                }
             }),
         );
         let gpu = s.app.gpu.as_mut().unwrap();
@@ -239,9 +243,11 @@ impl GameState for GamingState {
                         .score_display
                         .mark_score(self.gaming.score_counter.get_score());
                     let score_str = format!("{:06}", score);
+                    // monospace doesn't work
+                    // ui.label(RichText::new(score_str).size(99.0).monospace());
                     for x in score_str.chars().rev() {
                         let used = ui.label(RichText::new(x).size(99.0)).rect.width();
-                        let left = 62.0 - used;
+                        let left = 61.0 - used;
                         if left > 0.0 {
                             ui.add_space(left);
                         }
@@ -321,5 +327,12 @@ impl GameState for GamingState {
             },
             _ => {}
         }
+    }
+
+    fn switch(self: Box<Self>) -> Trans {
+        Trans::Push(Box::new(EndResultState {
+            result: BeatmapPlayResult::from_game(&self.gaming),
+            gaming: self.gaming,
+        }))
     }
 }

@@ -52,7 +52,7 @@ pub struct JudgeTimes {
 impl JudgeTimes {
     pub(crate) fn get_result(&self, click_time: OffsetType, hit_time: OffsetType) -> NoteHitResult {
         let delta = (click_time - hit_time).abs();
-        println!("Get result for delta {}", click_time - hit_time);
+        // println!("Get result for delta {}", click_time - hit_time);
         let grade = match delta {
             _ if delta <= self.perfect => NoteResult::Perfect,
             _ if delta <= self.great => NoteResult::Great,
@@ -111,17 +111,6 @@ pub enum PlayingNoteType<'a> {
     Normal(&'a mut PlayingNote<NormalNote>),
     Long(&'a mut PlayingNote<LongNote>),
 }
-macro_rules! impl_from_note {
-    ($ty: ty, $tk: ident) => {
-        impl<'a> From<&'a mut PlayingNote<$ty>> for PlayingNoteType<'a> {
-            fn from(value: &'a mut PlayingNote<$ty>) -> Self {
-                Self::$tk(value)
-            }
-        }
-    };
-}
-impl_from_note!(NormalNote, Normal);
-impl_from_note!(LongNote, Long);
 
 impl ScoreCounter {
     pub fn accept_result(&mut self, result: NoteHitResult) {
@@ -146,7 +135,12 @@ impl ScoreCounter {
     pub fn get_deltas(&self) -> &Vec<OffsetType> {
         &self.deltas
     }
-
+    pub fn get_note_count(&self, result: NoteResult) -> u32 {
+        self.result_map[&result]
+    }
+    pub fn get_max_combo(&self) -> u32 {
+        self.max_combo
+    }
     pub fn new(total_result: u32) -> Self {
         let mut result_map = HashMap::default();
         result_map.insert(NoteResult::Miss, 0);
@@ -164,8 +158,12 @@ impl ScoreCounter {
     }
 
     pub fn get_score(&self) -> u32 {
+        if self.total_result == 0 {
+            return 0;
+        }
         let mx_score = 1_000_000;
         let mut result = 0;
+        
         result += self.result_map[&NoteResult::Perfect] * mx_score / self.total_result;
         result += self.result_map[&NoteResult::Great] * mx_score / 2 / self.total_result;
         result += self.result_map[&NoteResult::Good] * mx_score / 4 / self.total_result;
@@ -344,34 +342,6 @@ impl<T: Note> TrackNotes<T> {
         self.play_area.retain(|x| x.note_idx != idx);
     }
 }
-
-pub struct GamingInput {
-    time: Instant,
-    pos: GamePos,
-}
-
-impl GamingInput {
-    pub fn new(time: Instant, pos: GamePos) -> Self {
-        Self { time, pos }
-    }
-
-    pub fn get_game_time(
-        &self,
-        now: Instant,
-        music_start_time: Instant,
-        music_time: f32,
-    ) -> OffsetType {
-        let delta = now.duration_since(self.time).as_secs_f32();
-        let delta_to_start = now.duration_since(music_start_time).as_secs_f32();
-        if delta_to_start < delta {
-            // the input is pressed when the music is not playing
-            OffsetType::MIN
-        } else {
-            secs_to_offset_type(music_time - delta)
-        }
-    }
-}
-
 pub struct Gaming {
     pub raw_file: SongBeatmapFile,
     pub(crate) ops: PlayOptions,
@@ -481,11 +451,7 @@ impl Gaming {
     }
 
     /// return the note hit result, and if it is long start.
-    pub fn process_input(
-        &mut self,
-        input: GamePos,
-        pointer: u64,
-    ) -> Option<(NoteHitResult, bool)> {
+    pub fn process_input(&mut self, input: GamePos, pointer: u64) -> Option<(NoteHitResult, bool)> {
         let time_range = input.time - self.judge.bad..=input.time + self.judge.miss;
         let in_time_range = |time: OffsetType| time_range.contains(&time);
 
@@ -595,3 +561,15 @@ impl Gaming {
         None
     }
 }
+
+macro_rules! impl_from_note {
+    ($ty: ty, $tk: ident) => {
+        impl<'a> From<&'a mut PlayingNote<$ty>> for PlayingNoteType<'a> {
+            fn from(value: &'a mut PlayingNote<$ty>) -> Self {
+                Self::$tk(value)
+            }
+        }
+    };
+}
+impl_from_note!(NormalNote, Normal);
+impl_from_note!(LongNote, Long);
