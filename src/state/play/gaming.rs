@@ -2,7 +2,7 @@ use crate::engine::global::STATIC_DATA;
 use crate::engine::renderer::texture_renderer::TextureRenderer;
 use crate::engine::{EasyGuiExt, GameState, LoopState, StateData, StateEvent, Trans};
 use crate::game::beatmap::file::SongBeatmapFile;
-use crate::game::beatmap::play::{Gaming, NoteResult, PlayingNoteType};
+use crate::game::beatmap::play::{Gaming, NoteHitResult, NoteResult, PlayingNoteType};
 use crate::game::beatmap::{GamePos, FOUR_KEY_X};
 use crate::game::render::NoteRenderer;
 use crate::game::song::SongInfo;
@@ -22,7 +22,7 @@ use winit::keyboard::{Key, KeyCode, PhysicalKey};
 
 #[derive(Default)]
 pub struct HitFeedback {
-    last_result: Option<(NoteResult, Instant)>,
+    last_result: Option<(NoteHitResult, Instant)>,
 }
 
 pub struct GamingState {
@@ -134,7 +134,7 @@ impl GameState for GamingState {
         let game_time = self.get_game_time();
         self.gaming.tick(
             game_time,
-            Some(|note: PlayingNoteType<'_>, result| {
+            Some(|_note: PlayingNoteType<'_>, result| {
                 self.hit_feedback.last_result = Some((result, Instant::now()))
             }),
         );

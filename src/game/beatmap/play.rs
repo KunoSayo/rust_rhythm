@@ -4,18 +4,29 @@ use crate::game::note::{LongNote, NormalNote, Note, NoteExt, NoteHitType};
 use crate::game::timing::{TimingGroup, TimingLine};
 use crate::game::{secs_to_offset_type, OffsetType};
 use egui::ahash::{HashMap, HashSet};
-use rayon::iter::IntoParallelRefMutIterator;
 use std::collections::VecDeque;
-use std::fmt::Display;
 use std::time::Instant;
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum NoteResult {
     Miss,
     Bad,
     Good,
     Great,
     Perfect,
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
+pub struct NoteHitResult {
+    pub grade: NoteResult,
+    pub delta: OffsetType,
+
+}
+
+impl NoteHitResult {
+    pub fn new(grade: NoteResult, delta: OffsetType) -> Self {
+        Self { grade, delta }
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -28,16 +39,17 @@ pub struct JudgeTimes {
 }
 
 impl JudgeTimes {
-    pub(crate) fn get_result(&self, click_time: OffsetType, hit_time: OffsetType) -> NoteResult {
+    pub(crate) fn get_result(&self, click_time: OffsetType, hit_time: OffsetType) -> NoteHitResult {
         let delta = (click_time - hit_time).abs();
         println!("Get result for delta {}", click_time - hit_time);
-        match delta {
+        let grade = match delta {
             _ if delta <= self.perfect => NoteResult::Perfect,
             _ if delta <= self.great => NoteResult::Great,
             _ if delta <= self.good => NoteResult::Good,
             _ if delta <= self.bad => NoteResult::Bad,
             _ => NoteResult::Miss,
-        }
+        };
+        NoteHitResult::new(grade, click_time - hit_time)
     }
 }
 
@@ -68,8 +80,11 @@ impl Default for PlayOptions {
 
 #[derive(Default)]
 pub struct ScoreCounter {
-    max_combo: usize,
-    combo: usize,
+    total_result: u32,
+    max_combo: u32,
+    combo: u32,
+    result_map: HashMap<NoteResult, u32>,
+    deltas: Vec<OffsetType>,
 }
 
 pub struct PlayingNote<NoteType> {
@@ -77,7 +92,7 @@ pub struct PlayingNote<NoteType> {
     pub note_idx: usize,
     pub note_y: f32,
     pub note_end_y: f32,
-    pub start_result: Option<NoteResult>,
+    pub start_result: Option<NoteHitResult>,
     // the pointer holding this note.
     holding: HashSet<u64>,
 }
@@ -88,12 +103,14 @@ pub enum PlayingNoteType<'a> {
 }
 
 impl ScoreCounter {
-    pub fn accept_result(&mut self, result: NoteResult) {
-        if result == NoteResult::Miss {
+    pub fn accept_result(&mut self, result: NoteHitResult) {
+        if result.grade == NoteResult::Miss {
             self.combo = 0;
         } else {
             self.combo += 1;
         }
+        *self.result_map.get_mut(&result.grade).unwrap() += 1;
+        self.deltas.push(result.delta);
         self.max_combo = self.combo.max(self.max_combo);
     }
 
@@ -101,8 +118,26 @@ impl ScoreCounter {
         self.combo > 2
     }
 
-    pub fn get_combo(&self) -> usize {
+    pub fn get_combo(&self) -> u32 {
         self.combo
+    }
+
+    pub fn new(total_result: u32) -> Self {
+        let mut result_map = HashMap::default();
+        result_map.insert(NoteResult::Miss, 0);
+        result_map.insert(NoteResult::Bad, 0);
+        result_map.insert(NoteResult::Good, 0);
+        result_map.insert(NoteResult::Great, 0);
+        result_map.insert(NoteResult::Perfect, 0);
+        Self { total_result, max_combo: 0, combo: 0, result_map, deltas: Vec::with_capacity(total_result as usize) }
+    }
+
+    pub fn get_score(&self) -> u32 {
+        let mx_score = 1_000_000;
+        let mut result = 0;
+        result += self.result_map[&NoteResult::Perfect] * mx_score / self.total_result;
+
+        result
     }
 }
 
@@ -228,7 +263,7 @@ impl<T: Note> TrackNotes<T> {
         ops: &PlayOptions,
         judge_times: &JudgeTimes,
         game_time: f32,
-        mut callback: impl FnMut(&mut PlayingNote<T>, NoteResult),
+        mut callback: impl FnMut(&mut PlayingNote<T>, NoteHitResult),
     ) {
         let offset = secs_to_offset_type(game_time);
 
@@ -247,9 +282,9 @@ impl<T: Note> TrackNotes<T> {
         }
         self.play_area.retain_mut(|x| {
             if x.is_later_miss(&judge_times, offset) {
-                callback(x, NoteResult::Miss);
+                callback(x, NoteHitResult::new(NoteResult::Miss, judge_times.miss));
                 if x.get_end_time().is_some() {
-                    x.start_result = Some(NoteResult::Miss);
+                    x.start_result = Some(NoteHitResult::new(NoteResult::Miss, judge_times.miss));
                     true
                 } else {
                     false
@@ -317,7 +352,7 @@ impl Gaming {
     fn tick_track(
         &mut self,
         game_time: f32,
-        mut callback: Option<impl FnMut(PlayingNoteType, NoteResult)>,
+        mut callback: Option<impl FnMut(PlayingNoteType, NoteHitResult)>,
     ) {
         for x in self.normal_notes.iter_mut() {
             x.tick(&self.ops, &self.judge, game_time, |note, result| {
@@ -406,13 +441,13 @@ impl Gaming {
     pub fn tick(
         &mut self,
         game_time: f32,
-        callback: Option<impl FnMut(PlayingNoteType, NoteResult)>,
+        callback: Option<impl FnMut(PlayingNoteType, NoteHitResult)>,
     ) {
         self.tick_track(game_time, callback);
     }
 
     /// return the note result,
-    pub fn process_input(&mut self, input: GamePos, pointer: u64) -> Option<NoteResult> {
+    pub fn process_input(&mut self, input: GamePos, pointer: u64) -> Option<NoteHitResult> {
         let time_range = input.time - self.judge.bad..=input.time + self.judge.miss;
         let in_time_range = |time: OffsetType| time_range.contains(&time);
 
@@ -478,9 +513,8 @@ impl Gaming {
         &mut self,
         input: GamePos,
         pointer: u64,
-    ) -> Option<(NoteResult, PlayingNoteType)> {
+    ) -> Option<(NoteHitResult, PlayingNoteType)> {
         self.pointers.remove(&pointer);
-        let time_range = input.time - self.judge.bad..=input.time + self.judge.miss;
 
         use rayon::iter::*;
         self.long_notes
@@ -489,15 +523,20 @@ impl Gaming {
             .filter(|x| x.is_x_in_range(input.x))
             .for_each(|playing_note| {
                 playing_note.holding.remove(&pointer);
-                if playing_note.holding.is_empty() && playing_note.start_result.is_some() {
-                    for (p, input) in &self.pointers {
-                        if playing_note.is_x_in_range(input.x) {
-                            playing_note.holding.insert(*p);
+                if playing_note.holding.is_empty() {
+                    if let Some(start_result) = playing_note.start_result {
+                        for (p, input) in &self.pointers {
+                            if playing_note.is_x_in_range(input.x) {
+                                playing_note.holding.insert(*p);
+                            }
                         }
-                    }
 
-                    if playing_note.holding.is_empty() {
-                        playing_note.start_result = Some(NoteResult::Miss);
+                        if playing_note.holding.is_empty() {
+                            let cur_result = self.judge.get_result(input.time, playing_note.note.end_time);
+                            if cur_result.grade != NoteResult::Perfect {
+                                playing_note.start_result = Some(NoteHitResult::new(NoteResult::Miss, start_result.delta));
+                            }
+                        }
                     }
                 }
             });

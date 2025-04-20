@@ -1,7 +1,7 @@
 use crate::engine::renderer::texture_renderer::{FragUniform, TextureObject, TextureRenderer};
 use crate::engine::uniform::{create_static_uniform_buffer, uniform_bind_buffer_entry};
 use crate::engine::{MainRendererData, ResourceLocation, ResourceManager, WgpuData};
-use crate::game::beatmap::play::{NoteResult, PlayingNote};
+use crate::game::beatmap::play::{NoteHitResult, NoteResult, PlayingNote};
 use crate::game::note::consts::NOTE_HEIGHT_PIXEL;
 use crate::game::note::{Note, NoteHitType};
 use egui::Rect;
@@ -254,7 +254,9 @@ impl NoteRenderer {
         vp: &Rect,
     ) {
         let device = &gpu.device;
-        let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor { label: Some("Note Renderer") });
+        let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor {
+            label: Some("Note Renderer"),
+        });
 
         tr.render(
             device,
@@ -386,7 +388,11 @@ impl NoteRenderer {
                     &mut to_objs,
                 );
             } else {
-                if let Some(NoteResult::Miss) = x.start_result {
+                if let Some(NoteHitResult {
+                    grade: NoteResult::Miss,
+                    ..
+                }) = x.start_result
+                {
                     desc.get_note_render_obj_by_y(
                         viewport_size,
                         0.0,
@@ -403,7 +409,6 @@ impl NoteRenderer {
                         &mut to_objs,
                     );
                 };
-                
             }
         }
     }
