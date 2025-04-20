@@ -196,11 +196,9 @@ impl GameState for GamingState {
         let tick_sound_res: ResourceLocation = ResourceLocation::from_name("tick");
         self.gaming.tick(
             game_time,
-            Some(|_note: PlayingNoteType<'_>, result| {
-                self.hit_feedback.last_result = Some((result, Instant::now()));
-                if !result.is_miss() {
-                    s.app.audio.as_mut().unwrap().play_sfx(&tick_sound_res);
-                }
+            Some(|_note: PlayingNoteType<'_>, _result| {
+                // we ignore the long note result.
+                
             }),
         );
         let gpu = s.app.gpu.as_mut().unwrap();
@@ -302,13 +300,15 @@ impl GameState for GamingState {
                             let tick_sound_res: ResourceLocation =
                                 ResourceLocation::from_name("tick");
                             if event.state.is_pressed() {
-                                if let Some(result) = self
+                                if let Some((result, is_long)) = self
                                     .gaming
                                     .process_input(game_input, ((input_x + 0.75) * 4.0) as _)
                                 {
                                     self.hit_feedback.last_result = Some((result, Instant::now()));
-                                    if !result.is_miss() {
-                                        s.app.audio.as_mut().unwrap().play_sfx(&tick_sound_res);
+                                    if !is_long {
+                                        if !result.is_miss() {
+                                            s.app.audio.as_mut().unwrap().play_sfx(&tick_sound_res);
+                                        }
                                     }
                                 }
                             } else {

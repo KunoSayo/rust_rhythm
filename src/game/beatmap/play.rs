@@ -111,6 +111,17 @@ pub enum PlayingNoteType<'a> {
     Normal(&'a mut PlayingNote<NormalNote>),
     Long(&'a mut PlayingNote<LongNote>),
 }
+macro_rules! impl_from_note {
+    ($ty: ty, $tk: ident) => {
+        impl<'a> From<&'a mut PlayingNote<$ty>> for PlayingNoteType<'a> {
+            fn from(value: &'a mut PlayingNote<$ty>) -> Self {
+                Self::$tk(value)
+            }
+        }
+    };
+}
+impl_from_note!(NormalNote, Normal);
+impl_from_note!(LongNote, Long);
 
 impl ScoreCounter {
     pub fn accept_result(&mut self, result: NoteHitResult) {
@@ -469,8 +480,12 @@ impl Gaming {
         self.tick_track(game_time, callback);
     }
 
-    /// return the note result,
-    pub fn process_input(&mut self, input: GamePos, pointer: u64) -> Option<NoteHitResult> {
+    /// return the note hit result, and if it is long start.
+    pub fn process_input(
+        &mut self,
+        input: GamePos,
+        pointer: u64,
+    ) -> Option<(NoteHitResult, bool)> {
         let time_range = input.time - self.judge.bad..=input.time + self.judge.miss;
         let in_time_range = |time: OffsetType| time_range.contains(&time);
 
@@ -507,11 +522,12 @@ impl Gaming {
                     let tg = note.get_timing_group() as usize;
                     self.normal_notes[tg].remove_play_note(idx);
                     self.score_counter.accept_result(result);
-                    ret = Some(result);
+                    ret = Some((result, false));
                 }
                 PlayingNoteType::Long(note) => {
                     let result = self.judge.get_result(input.time, note.get_time());
                     note.start_result = Some(result);
+                    ret = Some((result, true));
                     // let idx = note.note_idx;
                     // let tg = note.get_timing_group() as usize;
                     // we remove it when end.
