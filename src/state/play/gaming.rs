@@ -193,7 +193,7 @@ impl GameState for GamingState {
                         if last_result.1.elapsed().as_secs_f32() <= 3.0 {
                             let elap = last_result.1.elapsed().as_secs_f32().min(1.0);
                             ui.no_select_text(
-                                RichText::new(format!("{:?}", last_result.0))
+                                RichText::new(format!("{:?}", last_result.0.grade))
                                     .size(36.0 * (2.0 - elap)),
                                 Vec2::new(300.0, 100.0),
                             );
