@@ -1,4 +1,5 @@
 mod gaming;
+mod end;
 
 use crate::engine::{
     GameState, LoopState, StateData, StateEvent, Trans, WaitFutureState, WaitResult,

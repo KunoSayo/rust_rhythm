@@ -16,10 +16,22 @@ pub enum NoteResult {
     Perfect,
 }
 
+impl NoteResult {
+    pub fn is_miss(self) -> bool {
+        self == NoteResult::Miss
+    }
+}
+
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub struct NoteHitResult {
     pub grade: NoteResult,
     pub delta: OffsetType,
+}
+
+impl NoteHitResult {
+    pub fn is_miss(&self) -> bool {
+        self.grade.is_miss()
+    }
 }
 
 impl NoteHitResult {
@@ -118,6 +130,10 @@ impl ScoreCounter {
 
     pub fn get_combo(&self) -> u32 {
         self.combo
+    }
+
+    pub fn get_deltas(&self) -> &Vec<OffsetType> {
+        &self.deltas
     }
 
     pub fn new(total_result: u32) -> Self {
@@ -514,6 +530,16 @@ impl Gaming {
             });
 
         ret
+    }
+
+    pub fn is_end(&self) -> bool {
+        self.normal_notes
+            .iter()
+            .all(|x| x.pending.is_empty() && x.play_area.is_empty())
+            && self
+                .long_notes
+                .iter()
+                .all(|x| x.pending.is_empty() && x.play_area.is_empty())
     }
 
     pub fn process_input_leave(

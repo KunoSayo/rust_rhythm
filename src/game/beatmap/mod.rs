@@ -3,6 +3,7 @@
 pub mod file;
 pub mod play;
 mod test;
+pub mod summary;
 
 use crate::game::beatmap::file::SongBeatmapFile;
 use crate::game::OffsetType;

@@ -1,3 +1,4 @@
+use std::io::Cursor;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
@@ -9,7 +10,9 @@ use crate::game::song::SongManager;
 use futures::task::SpawnExt;
 use log::error;
 use once_cell::sync::Lazy;
-use wgpu::{Device, Queue, ShaderModule};
+use rodio::{Decoder, Source};
+use rodio::buffer::SamplesBuffer;
+use wgpu::{Device, Queue};
 use crate::game::render::NoteRenderer;
 
 pub struct InitState {
@@ -53,21 +56,28 @@ impl GameState for InitState {
                 let device = device;
                 let queue = queue;
                 let res = res;
+
+                let audio = Decoder::new(Cursor::new(res.load_asset("sfx/tick.wav").unwrap())).unwrap();
+                let audio = SamplesBuffer::new(audio.channels(), audio.sample_rate(), audio.convert_samples::<f32>().collect::<Vec<f32>>());
+                
                 let task = async move {
                     if !INITED.load(Ordering::Acquire) {
                         Lazy::force(&STATIC_DATA);
                     }
 
                     Self::init_tasks(device, queue, res).await;
-
                     anyhow::Ok(())
                 };
+
+                
+                
                 let song_manager = SongManager::init_manager()
                     .expect("Failed to init song manager");
                 match task.await { Err(e) => {
                     error!("Load failed for {:?}", e);
                     WaitResult::Exit
                 } _ => {
+                    
                     WaitResult::Function(Box::new(|s| {
                         s.app.egui_ctx.set_fonts(STATIC_DATA.font.clone());
                         s.wd.world.insert(Arc::new(song_manager));
@@ -76,6 +86,7 @@ impl GameState for InitState {
                             .unwrap();
                         let nr = NoteRenderer::new(&s.app.gpu.as_ref().unwrap().device, &tr, &s.app.res);
                         s.app.world.insert(nr);
+                        s.app.audio.as_mut().unwrap().cached_sfx.insert(ResourceLocation::from_name("tick"), audio);
                         Trans::Switch(state)
                     }))
                 }}

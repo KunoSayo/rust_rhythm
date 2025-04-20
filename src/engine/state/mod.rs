@@ -22,6 +22,7 @@ pub unsafe fn cast_static<'a, T>(x: &'a T) -> &'static T { unsafe {
     std::mem::transmute(x)
 }}
 
+#[non_exhaustive]
 pub enum Trans {
     None,
     Push(Box<dyn GameState>),
@@ -29,6 +30,7 @@ pub enum Trans {
     Switch(Box<dyn GameState>),
     Exit,
     Vec(Vec<Trans>),
+    IntoSwitch
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -78,6 +80,8 @@ pub trait GameState: 'static {
     fn stop(&mut self, _: &mut StateData) {}
 
     fn on_event(&mut self, _: &mut StateData, _: StateEvent) {}
+    
+    fn switch(self: Box<Self>) -> Trans { Trans::None }
 }
 
 #[derive(PartialEq, Copy, Clone, Debug)]

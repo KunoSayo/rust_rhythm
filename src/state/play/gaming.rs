@@ -1,12 +1,16 @@
 use crate::engine::global::STATIC_DATA;
 use crate::engine::renderer::texture_renderer::TextureRenderer;
-use crate::engine::{EasyGuiExt, GameState, LoopState, StateData, StateEvent, Trans};
+use crate::engine::{
+    EasyGuiExt, GameState, LoopState, ResourceLocation, StateData, StateEvent, Trans,
+};
 use crate::game::beatmap::file::SongBeatmapFile;
 use crate::game::beatmap::play::{Gaming, NoteHitResult, NoteResult, PlayingNoteType};
+use crate::game::beatmap::summary::BeatmapPlayResult;
 use crate::game::beatmap::{GamePos, FOUR_KEY_X};
 use crate::game::render::NoteRenderer;
 use crate::game::song::SongInfo;
 use crate::game::{get_play_rect, secs_to_offset_type};
+use crate::state::play::end::EndResultState;
 use anyhow::anyhow;
 use egui::{Align, Color32, Context, Frame, Layout, Pos2, Rect, RichText, Stroke, Vec2, Widget};
 use rodio::buffer::SamplesBuffer;
@@ -69,6 +73,7 @@ pub struct GamingState {
     game_rect: Rect,
     sink: Sink,
     score_display: ScoreDisplay,
+    end_remaining: Option<f32>,
 }
 
 impl GamingState {
@@ -128,6 +133,7 @@ impl GamingState {
             game_rect: Rect::ZERO,
             sink,
             score_display: Default::default(),
+            end_remaining: None,
         };
         Ok(this)
     }
@@ -162,6 +168,24 @@ impl GameState for GamingState {
         {
             trans = Trans::Pop;
         }
+        match &mut self.end_remaining {
+            Some(x) => {
+                *x -= s.dt;
+                if (*x <= 0.0) {
+                    trans = Trans::Switch(Box::new(EndResultState {
+                        result: BeatmapPlayResult::from_game(&self.gaming),
+                    }));
+                }
+                self.sink
+                    .set_volume(0.0_f32.max(self.sink.volume() - s.dt / 3.0))
+            }
+            None => {
+                if self.gaming.is_end() {
+                    self.end_remaining = Some(3.0);
+                }
+            }
+        }
+
         // in fact, we do update in render, for we are polling.
         (trans, LoopState::POLL)
     }
@@ -169,10 +193,14 @@ impl GameState for GamingState {
     fn render(&mut self, s: &mut StateData, ctx: &Context) -> Trans {
         let mut trans = Trans::None;
         let game_time = self.get_game_time();
+        let tick_sound_res: ResourceLocation = ResourceLocation::from_name("tick");
         self.gaming.tick(
             game_time,
             Some(|_note: PlayingNoteType<'_>, result| {
-                self.hit_feedback.last_result = Some((result, Instant::now()))
+                self.hit_feedback.last_result = Some((result, Instant::now()));
+                if !result.is_miss() {
+                    s.app.audio.as_mut().unwrap().play_sfx(&tick_sound_res);
+                }
             }),
         );
         let gpu = s.app.gpu.as_mut().unwrap();
@@ -271,12 +299,17 @@ impl GameState for GamingState {
                             };
                             let game_input =
                                 GamePos::new(input_x, secs_to_offset_type(input_game_time));
+                            let tick_sound_res: ResourceLocation =
+                                ResourceLocation::from_name("tick");
                             if event.state.is_pressed() {
                                 if let Some(result) = self
                                     .gaming
                                     .process_input(game_input, ((input_x + 0.75) * 4.0) as _)
                                 {
                                     self.hit_feedback.last_result = Some((result, Instant::now()));
+                                    if !result.is_miss() {
+                                        s.app.audio.as_mut().unwrap().play_sfx(&tick_sound_res);
+                                    }
                                 }
                             } else {
                                 self.gaming

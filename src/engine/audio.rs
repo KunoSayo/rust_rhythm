@@ -1,21 +1,48 @@
+use crate::engine::ResourceLocation;
+use egui::ahash::HashMap;
 use log::info;
-use rodio::OutputStreamHandle;
+use rodio::buffer::SamplesBuffer;
+use rodio::{OutputStreamHandle, Sink};
 use rubato::{
     Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction,
 };
+use std::collections::VecDeque;
 
 pub struct AudioData {
     pub stream: rodio::OutputStream,
     pub stream_handle: OutputStreamHandle,
+    pub cached_sfx: HashMap<ResourceLocation, SamplesBuffer<f32>>,
+    sink_pool: VecDeque<Sink>,
+
 }
 
 impl AudioData {
     pub fn new() -> anyhow::Result<AudioData> {
         let (stream, handle) = rodio::OutputStream::try_default()?;
+        let mut sink_pool = VecDeque::default();
+        sink_pool.resize_with(8, || {
+            Sink::try_new(&handle).expect("Why cannot new")
+        });
         Ok(Self {
             stream,
             stream_handle: handle,
+            cached_sfx: Default::default(),
+            sink_pool,
         })
+    }
+
+    pub fn play_sfx(&mut self, loc: &ResourceLocation) {
+        if let Some(buffer) = self.cached_sfx.get(loc) {
+            let front_sink = self.sink_pool.front().unwrap();
+            if front_sink.empty() {
+                front_sink.append(buffer.clone());
+                let front_sink = self.sink_pool.pop_front().unwrap();
+                self.sink_pool.push_back(front_sink);
+            } else if let Ok(sink) = Sink::try_new(&self.stream_handle) {
+                sink.append(buffer.clone());
+                sink.detach()
+            }
+        }
     }
 }
 
@@ -36,7 +63,7 @@ pub fn sample_change_speed(samples: &[i16], channels: usize, speed: f32) -> Vec<
         samples.len() / channels,
         channels,
     )
-    .expect("Failed to get resampler");
+        .expect("Failed to get resampler");
     let audio_data = samples
         .iter()
         .map(|x| (*x as f64) / (i16::MAX - 1) as f64)

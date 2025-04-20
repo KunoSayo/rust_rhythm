@@ -161,8 +161,13 @@ impl WindowInstance {
             }
             if let Some(last) = self.states.last_mut() {
                 let ((tran, l), wd) = { (last.update(&mut state_data), state_data.wd) };
-                self.process_tran(tran, wd);
                 self.loop_info.loop_state |= l;
+                if matches!(tran, Trans::IntoSwitch) {
+                    let t = self.states.pop().unwrap().switch();
+                    self.process_tran(t, wd);
+                } else {
+                    self.process_tran(tran, wd);
+                }
             }
         }
         self.app.last_update_time = now;
@@ -200,189 +205,196 @@ impl WindowInstance {
                 }
             }
             Trans::None => {}
+            Trans::IntoSwitch => {
+                log::warn!("Into switch cannot be used in vec.");
+            }
         }
     }
 
     fn render_once(&mut self, el: &mut GlobalData) {
-        match (&self.app.gpu,) { (Some(gpu),) => {
-            profiling::scope!("Render once");
-            let render_now = Instant::now();
-            let render_dur = render_now.duration_since(self.app.last_render_time);
-            let dt = render_dur.as_secs_f32();
-            self.loop_info.loop_state.reset(dt);
-            {
-                let mut encoder = gpu
-                    .device
-                    .create_command_encoder(&CommandEncoderDescriptor {
-                        label: Some("Clear Encoder"),
-                    });
-                let _ = encoder.begin_render_pass(&RenderPassDescriptor {
-                    label: None,
-                    color_attachments: &[Some(RenderPassColorAttachment {
-                        view: &gpu.views.get_screen().view,
-                        resolve_target: None,
-                        ops: Operations {
-                            load: LoadOp::Clear(Color {
-                                r: 0.0,
-                                g: 0.0,
-                                b: 0.0,
-                                a: 1.0,
-                            }),
-                            store: StoreOp::Store,
-                        },
-                    })],
-                    depth_stencil_attachment: None,
-                    timestamp_writes: None,
-                    occlusion_query_set: None,
-                });
-                gpu.queue.submit(Some(encoder.finish()));
-            }
-
-            let full_output = self.app.egui_ctx.clone().run(
-                self.app.egui.take_egui_input(&self.app.window),
-                |egui_ctx| {
-                    let mut state_data = get_state!(self.app, el);
-                    state_data.dt = dt;
-
-                    for game_state in &mut self.states {
-                        game_state.shadow_render(&mut state_data, egui_ctx);
-                    }
-                    if let Some(g) = self.states.last_mut() {
-                        let tran = g.render(&mut state_data, egui_ctx);
-                        self.process_tran(tran, el);
-                    }
-                },
-            );
-
-            let gpu = self.app.gpu.as_ref().unwrap();
-            let render = self.app.render.as_mut().unwrap();
-            // render ui output to main screen
-            {
-                let device = gpu.device.as_ref();
-                let queue = gpu.queue.as_ref();
-                let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor {
-                    label: Some("encoder for egui"),
-                });
-
-                let screen_descriptor = ScreenDescriptor {
-                    size_in_pixels: [gpu.surface_cfg.width, gpu.surface_cfg.height],
-                    pixels_per_point: self.app.window.scale_factor() as f32,
-                };
-                // Upload all resources for the GPU.
-
-                let egui_renderer = &mut render.egui_rpass;
-                let paint_jobs = self
-                    .app
-                    .egui
-                    .egui_ctx()
-                    .tessellate(full_output.shapes, 1.0f32);
-                for (id, delta) in &full_output.textures_delta.set {
-                    egui_renderer.update_texture(device, queue, *id, &delta);
-                }
-                let buffer = egui_renderer.update_buffers(
-                    &device,
-                    &queue,
-                    &mut encoder,
-                    &paint_jobs,
-                    &screen_descriptor,
-                );
-                queue.submit(buffer);
+        match (&self.app.gpu,) {
+            (Some(gpu),) => {
+                profiling::scope!("Render once");
+                let render_now = Instant::now();
+                let render_dur = render_now.duration_since(self.app.last_render_time);
+                let dt = render_dur.as_secs_f32();
+                self.loop_info.loop_state.reset(dt);
                 {
-                    let mut rp = encoder
-                        .begin_render_pass(&RenderPassDescriptor {
-                            label: None,
-                            color_attachments: &[Some(RenderPassColorAttachment {
-                                view: &gpu.views.get_screen().view,
-                                resolve_target: None,
-                                ops: Operations {
-                                    load: LoadOp::Load,
-                                    store: StoreOp::Store,
-                                },
-                            })],
-                            depth_stencil_attachment: None,
-                            timestamp_writes: None,
-                            occlusion_query_set: None,
-                        })
-                        .forget_lifetime();
-                    egui_renderer.render(&mut rp, &paint_jobs, &screen_descriptor);
-                }
-                // Submit the commands.
-                queue.submit(std::iter::once(encoder.finish()));
-                full_output
-                    .textures_delta
-                    .free
-                    .iter()
-                    .for_each(|id| egui_renderer.free_texture(id));
-            }
-
-            {
-                let mut sd = get_state!(self.app, el);
-                sd.dt = dt;
-                self.states
-                    .iter_mut()
-                    .for_each(|s| s.on_event(&mut sd, StateEvent::PostUiRender));
-            }
-            let gpu = self.app.gpu.as_ref().unwrap();
-
-            // We do get here
-
-            let swap_chain_frame = match gpu.surface.get_current_texture() { Ok(s) => {
-                s
-            } _ => {
-                // it is normal.
-                log::trace!("Lose swap chain frame!");
-                return;
-            }};
-
-            {
-                let mut encoder = gpu
-                    .device
-                    .create_command_encoder(&CommandEncoderDescriptor {
-                        label: Some("Copy buffer to screen commands"),
+                    let mut encoder =
+                        gpu.device
+                            .create_command_encoder(&CommandEncoderDescriptor {
+                                label: Some("Clear Encoder"),
+                            });
+                    let _ = encoder.begin_render_pass(&RenderPassDescriptor {
+                        label: None,
+                        color_attachments: &[Some(RenderPassColorAttachment {
+                            view: &gpu.views.get_screen().view,
+                            resolve_target: None,
+                            ops: Operations {
+                                load: LoadOp::Clear(Color {
+                                    r: 0.0,
+                                    g: 0.0,
+                                    b: 0.0,
+                                    a: 1.0,
+                                }),
+                                store: StoreOp::Store,
+                            },
+                        })],
+                        depth_stencil_attachment: None,
+                        timestamp_writes: None,
+                        occlusion_query_set: None,
                     });
-                let size = gpu.get_screen_size();
+                    gpu.queue.submit(Some(encoder.finish()));
+                }
 
-                let surface_output = &swap_chain_frame;
-                encoder.copy_texture_to_texture(
-                    TexelCopyTextureInfo {
-                        texture: &gpu.views.get_screen().texture,
-                        mip_level: 0,
-                        origin: Origin3d::default(),
-                        aspect: TextureAspect::All,
-                    },
-                    TexelCopyTextureInfo {
-                        texture: &surface_output.texture,
-                        mip_level: 0,
-                        origin: Default::default(),
-                        aspect: TextureAspect::All,
-                    },
-                    Extent3d {
-                        width: size.0,
-                        height: size.1,
-                        depth_or_array_layers: 1,
+                let full_output = self.app.egui_ctx.clone().run(
+                    self.app.egui.take_egui_input(&self.app.window),
+                    |egui_ctx| {
+                        let mut state_data = get_state!(self.app, el);
+                        state_data.dt = dt;
+
+                        for game_state in &mut self.states {
+                            game_state.shadow_render(&mut state_data, egui_ctx);
+                        }
+                        if let Some(g) = self.states.last_mut() {
+                            let tran = g.render(&mut state_data, egui_ctx);
+                            self.process_tran(tran, el);
+                        }
                     },
                 );
-                gpu.queue.submit(Some(encoder.finish()));
+
+                let gpu = self.app.gpu.as_ref().unwrap();
+                let render = self.app.render.as_mut().unwrap();
+                // render ui output to main screen
+                {
+                    let device = gpu.device.as_ref();
+                    let queue = gpu.queue.as_ref();
+                    let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor {
+                        label: Some("encoder for egui"),
+                    });
+
+                    let screen_descriptor = ScreenDescriptor {
+                        size_in_pixels: [gpu.surface_cfg.width, gpu.surface_cfg.height],
+                        pixels_per_point: self.app.window.scale_factor() as f32,
+                    };
+                    // Upload all resources for the GPU.
+
+                    let egui_renderer = &mut render.egui_rpass;
+                    let paint_jobs = self
+                        .app
+                        .egui
+                        .egui_ctx()
+                        .tessellate(full_output.shapes, 1.0f32);
+                    for (id, delta) in &full_output.textures_delta.set {
+                        egui_renderer.update_texture(device, queue, *id, &delta);
+                    }
+                    let buffer = egui_renderer.update_buffers(
+                        &device,
+                        &queue,
+                        &mut encoder,
+                        &paint_jobs,
+                        &screen_descriptor,
+                    );
+                    queue.submit(buffer);
+                    {
+                        let mut rp = encoder
+                            .begin_render_pass(&RenderPassDescriptor {
+                                label: None,
+                                color_attachments: &[Some(RenderPassColorAttachment {
+                                    view: &gpu.views.get_screen().view,
+                                    resolve_target: None,
+                                    ops: Operations {
+                                        load: LoadOp::Load,
+                                        store: StoreOp::Store,
+                                    },
+                                })],
+                                depth_stencil_attachment: None,
+                                timestamp_writes: None,
+                                occlusion_query_set: None,
+                            })
+                            .forget_lifetime();
+                        egui_renderer.render(&mut rp, &paint_jobs, &screen_descriptor);
+                    }
+                    // Submit the commands.
+                    queue.submit(std::iter::once(encoder.finish()));
+                    full_output
+                        .textures_delta
+                        .free
+                        .iter()
+                        .for_each(|id| egui_renderer.free_texture(id));
+                }
+
+                {
+                    let mut sd = get_state!(self.app, el);
+                    sd.dt = dt;
+                    self.states
+                        .iter_mut()
+                        .for_each(|s| s.on_event(&mut sd, StateEvent::PostUiRender));
+                }
+                let gpu = self.app.gpu.as_ref().unwrap();
+
+                // We do get here
+
+                let swap_chain_frame = match gpu.surface.get_current_texture() {
+                    Ok(s) => s,
+                    _ => {
+                        // it is normal.
+                        log::trace!("Lose swap chain frame!");
+                        return;
+                    }
+                };
+
+                {
+                    let mut encoder =
+                        gpu.device
+                            .create_command_encoder(&CommandEncoderDescriptor {
+                                label: Some("Copy buffer to screen commands"),
+                            });
+                    let size = gpu.get_screen_size();
+
+                    let surface_output = &swap_chain_frame;
+                    encoder.copy_texture_to_texture(
+                        TexelCopyTextureInfo {
+                            texture: &gpu.views.get_screen().texture,
+                            mip_level: 0,
+                            origin: Origin3d::default(),
+                            aspect: TextureAspect::All,
+                        },
+                        TexelCopyTextureInfo {
+                            texture: &surface_output.texture,
+                            mip_level: 0,
+                            origin: Default::default(),
+                            aspect: TextureAspect::All,
+                        },
+                        Extent3d {
+                            width: size.0,
+                            height: size.1,
+                            depth_or_array_layers: 1,
+                        },
+                    );
+                    gpu.queue.submit(Some(encoder.finish()));
+                }
+
+                // if self.window.inputs.is_pressed(&[VirtualKeyCode::F11]) {
+                //     self.window.save_screen_shots();
+                // }
+                //
+                // self.window.pools.render_pool.try_run_one();
+
+                self.app.last_render_time = render_now;
+                swap_chain_frame.present();
+
+                self.app
+                    .egui
+                    .handle_platform_output(&self.app.window, full_output.platform_output);
+                self.app.render.as_mut().unwrap().staging_belt.recall();
             }
-
-            // if self.window.inputs.is_pressed(&[VirtualKeyCode::F11]) {
-            //     self.window.save_screen_shots();
-            // }
-            //
-            // self.window.pools.render_pool.try_run_one();
-
-            self.app.last_render_time = render_now;
-            swap_chain_frame.present();
-
-            self.app
-                .egui
-                .handle_platform_output(&self.app.window, full_output.platform_output);
-            self.app.render.as_mut().unwrap().staging_belt.recall();
-        } _ => {
-            // no gpu but we need render it...
-            // well...
-            // no idea.
-        }}
+            _ => {
+                // no gpu but we need render it...
+                // well...
+                // no idea.
+            }
+        }
     }
 
     fn start(&mut self, mut start: Box<dyn GameState>, wd: &mut GlobalData) {
@@ -643,11 +655,7 @@ impl WindowManager {
                         new_windows: &mut created_windows,
                         world: &mut self.world,
                     };
-                    let WindowInstance {
-                        app,
-                        states,
-                        ..
-                    } = this.deref_mut().deref_mut();
+                    let WindowInstance { app, states, .. } = this.deref_mut().deref_mut();
                     let sd = &mut get_state!(*app, &mut gd);
                     states
                         .iter_mut()
@@ -774,11 +782,7 @@ impl WindowManager {
                                 new_windows: &mut created_windows,
                                 world: &mut self.world,
                             };
-                            let WindowInstance {
-                                app,
-                                states,
-                                ..
-                            } = this.deref_mut().deref_mut();
+                            let WindowInstance { app, states, .. } = this.deref_mut().deref_mut();
                             let sd = &mut get_state!(*app, &mut gd);
                             states
                                 .iter_mut()
@@ -797,48 +801,51 @@ impl WindowManager {
                 self.draw_events += 1;
                 let mut not_running = vec![];
 
-                match self.windows.get(&window_id) { Some(this) => {
-                    let mut this = this.borrow_mut();
+                match self.windows.get(&window_id) {
+                    Some(this) => {
+                        let mut this = this.borrow_mut();
 
-                    'update: {
-                        let mut this = &mut this;
-                        let this = this.deref_mut();
-                        if !this.loop_info.got_event
-                            && this.loop_info.loop_state.control_flow == ControlFlow::Wait
-                        {
-                            break 'update;
-                        }
-                        if this.states.is_empty() {
-                            this.running = false;
-                        }
-                        if this.running {
-                            let mut wd = GlobalData {
-                                el: &event_loop,
-                                elp: &self.proxy,
-                                windows: &self.windows,
-                                new_windows: &mut created_windows,
-                                world: &mut self.world,
-                            };
-                            this.render_once(&mut wd);
-                            if this.loop_info.loop_state.render > 0.0
-                                || this.app.egui_ctx.has_requested_repaint()
+                        'update: {
+                            let mut this = &mut this;
+                            let this = this.deref_mut();
+                            if !this.loop_info.got_event
+                                && this.loop_info.loop_state.control_flow == ControlFlow::Wait
                             {
-                                this.app.window.request_redraw();
+                                break 'update;
                             }
-                        } else {
-                            not_running.push(window_id);
-                            if let Some(rid) = self.root {
-                                if window_id == rid {
-                                    event_loop.exit();
+                            if this.states.is_empty() {
+                                this.running = false;
+                            }
+                            if this.running {
+                                let mut wd = GlobalData {
+                                    el: &event_loop,
+                                    elp: &self.proxy,
+                                    windows: &self.windows,
+                                    new_windows: &mut created_windows,
+                                    world: &mut self.world,
+                                };
+                                this.render_once(&mut wd);
+                                if this.loop_info.loop_state.render > 0.0
+                                    || this.app.egui_ctx.has_requested_repaint()
+                                {
+                                    this.app.window.request_redraw();
+                                }
+                            } else {
+                                not_running.push(window_id);
+                                if let Some(rid) = self.root {
+                                    if window_id == rid {
+                                        event_loop.exit();
+                                    }
                                 }
                             }
                         }
                     }
-                } _ => {
-                    if self.root.map(|id| id == window_id).unwrap_or(false) {
-                        event_loop.exit()
+                    _ => {
+                        if self.root.map(|id| id == window_id).unwrap_or(false) {
+                            event_loop.exit()
+                        }
                     }
-                }}
+                }
 
                 for id in not_running {
                     self.windows.remove(&id);
@@ -1049,31 +1056,33 @@ impl AsyncWindowManagerInner {
                 ControlFlow::WaitUntil(t) => {
                     let start = Instant::now();
                     if t > start {
-                        match self.recv.recv_timeout(t.duration_since(start)) { Ok(msg) => {
-                            s_msg = Some(msg);
-                            StartCause::WaitCancelled {
-                                start,
-                                requested_resume: Some(Instant::now()),
+                        match self.recv.recv_timeout(t.duration_since(start)) {
+                            Ok(msg) => {
+                                s_msg = Some(msg);
+                                StartCause::WaitCancelled {
+                                    start,
+                                    requested_resume: Some(Instant::now()),
+                                }
                             }
-                        } _ => {
-                            StartCause::ResumeTimeReached {
+                            _ => StartCause::ResumeTimeReached {
                                 start,
                                 requested_resume: Instant::now(),
-                            }
-                        }}
+                            },
+                        }
                     } else {
-                        match self.recv.try_recv() { Ok(msg) => {
-                            s_msg = Some(msg);
-                            StartCause::WaitCancelled {
-                                start,
-                                requested_resume: Some(Instant::now()),
+                        match self.recv.try_recv() {
+                            Ok(msg) => {
+                                s_msg = Some(msg);
+                                StartCause::WaitCancelled {
+                                    start,
+                                    requested_resume: Some(Instant::now()),
+                                }
                             }
-                        } _ => {
-                            StartCause::ResumeTimeReached {
+                            _ => StartCause::ResumeTimeReached {
                                 start,
                                 requested_resume: Instant::now(),
-                            }
-                        }}
+                            },
+                        }
                     }
                 }
             };
@@ -1119,7 +1128,6 @@ impl AsyncWindowManagerInner {
 
             self.request_draws.borrow_mut().clear();
             log::trace!("Loop inner end");
-            
         }
     }
 
