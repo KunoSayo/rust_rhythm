@@ -24,6 +24,42 @@ pub struct HitFeedback {
     last_result: Option<(NoteHitResult, Instant)>,
 }
 
+/// We delay the score display in 3s
+/// Every score will add to the current in 3s
+#[derive(Default)]
+struct ScoreDisplay {
+    /// The last recorded score, indicate whether should record new delayed score.
+    current: u32,
+    /// The base score for display
+    display_base: u32,
+    /// The score delayed add to current, (origin score delta, add time)
+    delayed: Vec<(u32, Instant)>,
+}
+
+impl ScoreDisplay {
+    fn mark_score(&mut self, score: u32) -> u32 {
+        if self.current != score {
+            self.delayed.push((score - self.current, Instant::now()));
+            self.current = score;
+        }
+
+        let mut display = self.display_base;
+        self.delayed.retain(|(delta, added_time)| {
+            let passed = added_time.elapsed().as_secs_f32();
+            if passed >= 1.0 {
+                display += *delta;
+                self.display_base += *delta;
+                false
+            } else {
+                display += (*delta as f32 * passed / 1.0).round() as u32;
+                true
+            }
+        });
+
+        display
+    }
+}
+
 pub struct GamingState {
     pub total_duration: Duration,
     pub start_time: Instant,
@@ -32,6 +68,7 @@ pub struct GamingState {
     gaming: Gaming,
     game_rect: Rect,
     sink: Sink,
+    score_display: ScoreDisplay,
 }
 
 impl GamingState {
@@ -90,6 +127,7 @@ impl GamingState {
             gaming: Gaming::load_game(beatmap_file),
             game_rect: Rect::ZERO,
             sink,
+            score_display: Default::default(),
         };
         Ok(this)
     }
@@ -172,10 +210,10 @@ impl GameState for GamingState {
             .frame(Frame::NONE)
             .show(ctx, |ui| {
                 ui.with_layout(Layout::right_to_left(Align::TOP), |ui| {
-                    ui.label(
-                        RichText::new(format!("{:06}", self.gaming.score_counter.get_score()))
-                            .size(99.0),
-                    );
+                    let score = self
+                        .score_display
+                        .mark_score(self.gaming.score_counter.get_score());
+                    ui.label(RichText::new(format!("{:06}", score)).size(99.0));
                 });
 
                 ui.painter().hline(
