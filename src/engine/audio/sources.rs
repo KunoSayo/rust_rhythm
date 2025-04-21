@@ -102,6 +102,7 @@ impl ControlledSampleBuffers {
                 },
                 Err(TryRecvError::Disconnected) => {
                     self.stop();
+                    break;
                 }
                 Err(TryRecvError::Empty) => break,
             }
@@ -214,6 +215,13 @@ impl ControlledBufferHandle {
     }
 
     pub fn play(&self) {
-        let _ = self.tx.send(ControlEvent::Play);
+        self.tx.send(ControlEvent::Play)
+            .expect("Failed to play.");
+    }
+}
+
+impl Drop for ControlledBufferHandle {
+    fn drop(&mut self) {
+        let _ = self.tx.send(ControlEvent::Stop);
     }
 }

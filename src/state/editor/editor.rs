@@ -128,7 +128,6 @@ impl BeatMapEditor {
             .total_duration()
             .ok_or(anyhow!("No audio duration"))?;
         sink.pause();
-        sink.append(samples);
 
         let vol = STATIC_DATA
             .cfg_data
@@ -147,6 +146,7 @@ impl BeatMapEditor {
             let samples = decoder.collect();
             SongSampleInfo::new(samples, sample_rate, channels)
         };
+        
 
         let dirty = info.is_none();
         let current_editor = SubEditor::Timing;
@@ -561,7 +561,7 @@ impl BeatMapEditor {
 
                 let right_sample_idx = right_sample_idx.at_most(
                     (self.total_duration.as_secs_f32() * self.sample_info.sample_rate as f32)
-                        as usize,
+                        as usize - 1,
                 );
 
                 use rayon::prelude::*;
