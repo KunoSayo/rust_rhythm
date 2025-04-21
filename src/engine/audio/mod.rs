@@ -133,7 +133,14 @@ pub fn sample_change_speed(samples: &[f32], channels: usize, speed: f32) -> Vec<
     info!("Processed sample to speed {speed}");
     // [[Channel data]; channel count]
     // so we should rearrange it.
+
+    let mut result = Vec::with_capacity(chunks[0].len() * channels);
     
-    let result = result_data.into_iter().flat_map(|x| x.into_iter()).collect();
+
+    for i in 0..chunks[0].len() {
+        for j in 0..channels {
+            result.push(result_data[j][i]);
+        }
+    }
     result
 }
