@@ -4,22 +4,20 @@ use cpal::{BufferSize, StreamConfig, SupportedBufferSize, SupportedStreamConfig}
 use egui::ahash::HashMap;
 use log::info;
 use rodio::buffer::SamplesBuffer;
+use rodio::mixer::Mixer;
 use rodio::source::SeekError;
 use rodio::{OutputStream, Sink, Source, StreamError};
 use rubato::{
     Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction,
 };
 use std::collections::VecDeque;
-use std::sync::{Arc, RwLock};
 use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
-use rodio::mixer::Mixer;
 
 pub mod sources;
 
-
 pub type OutputStreamHandle = Mixer;
-
 
 pub struct AudioData {
     stream: OutputStream,
@@ -29,13 +27,11 @@ pub struct AudioData {
 }
 
 impl AudioData {
-    fn create_stream_from_device(
-        device: rodio::Device,
-    ) -> Result<(OutputStream), StreamError> {
+    fn create_stream_from_device(device: rodio::Device) -> Result<(OutputStream), StreamError> {
         // let cfg = device
         //     .default_output_config()
         //     .map_err(|e| StreamError::DefaultStreamConfigError(e))?;
-        // 
+        //
         // let (cfg_min, cfg_max) = match cfg.buffer_size() {
         //     SupportedBufferSize::Range { min, max } => (*min, *max),
         //     SupportedBufferSize::Unknown => (1, cfg.sample_rate().0),
@@ -50,9 +46,7 @@ impl AudioData {
         //     },
         //     cfg.sample_format(),
         // );
-        rodio::OutputStreamBuilder::from_device(device)?
-            .open_stream()
-
+        rodio::OutputStreamBuilder::from_device(device)?.open_stream()
     }
     fn create_stream() -> Result<(OutputStream), StreamError> {
         let default_device = cpal::default_host()
@@ -94,7 +88,7 @@ impl AudioData {
                 front_sink.append(buffer.clone());
                 let front_sink = self.sink_pool.pop_front().unwrap();
                 self.sink_pool.push_back(front_sink);
-            } else  {
+            } else {
                 let sink = Sink::connect_new(&self.stream_handle);
                 sink.append(buffer.clone());
                 sink.detach()
@@ -126,11 +120,14 @@ pub fn sample_change_speed(samples: &[f32], channels: usize, speed: f32) -> Vec<
         .map(|x| (*x as f64) / (i16::MAX - 1) as f64)
         .collect::<Vec<_>>();
     let mut chunks = vec![vec![]; channels];
+    for x in chunks.iter_mut() {
+        x.reserve(audio_data.len() / channels);
+    }
 
     let f64_to_i16 = |x: f64| (x * (i16::MAX - 1) as f64).round() as f32;
     audio_data.chunks(channels).for_each(|x| {
-        for (idx, value) in x.iter().enumerate() {
-            chunks[idx].push(*value);
+        for (chunk, value) in chunks.iter_mut().zip(x.iter()) {
+            chunk.push(*value)
         }
     });
 
