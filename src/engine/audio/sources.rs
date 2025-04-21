@@ -21,7 +21,7 @@ struct SharedMem {
     stopped: Arc<AtomicBool>,
 }
 
-pub const DELAY_MS_ALLOW: u32 = 4;
+pub const DELAY_MS_ALLOW: u32 = 5;
 
 struct ControlledSampleBuffers {
     buffer: TrackPosition<SamplesBuffer>,
