@@ -13,7 +13,7 @@ use rubato::{
 use std::collections::VecDeque;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, RwLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub mod sources;
 
@@ -100,6 +100,7 @@ impl AudioData {
 impl AudioData {}
 
 pub fn sample_change_speed(samples: &[f32], channels: usize, speed: f32) -> Vec<f32> {
+    let now = Instant::now();
     let params = SincInterpolationParameters {
         sinc_len: 256,
         f_cutoff: 0.95,
@@ -121,26 +122,30 @@ pub fn sample_change_speed(samples: &[f32], channels: usize, speed: f32) -> Vec<
         x.reserve(audio_data.len() / channels);
     }
 
-    
+
     audio_data.chunks(channels).for_each(|x| {
         for (chunk, value) in chunks.iter_mut().zip(x.iter()) {
             chunk.push(*value)
         }
     });
 
-    info!("Process sample to speed {speed}");
+    info!("Process sample to speed {speed} with prepare data in {}ms", now.elapsed().as_millis());
+    let now = Instant::now();
     let result_data = resampler.process(&chunks, None).expect("Failed to process");
-    info!("Processed sample to speed {speed}");
+    info!("Processed sample to speed {speed} in {}ms", now.elapsed().as_millis());
+    let now = Instant::now();
     // [[Channel data]; channel count]
     // so we should rearrange it.
 
     let mut result = Vec::with_capacity(chunks[0].len() * channels);
-    
+
 
     for i in 0..chunks[0].len() {
         for j in 0..channels {
             result.push(result_data[j][i]);
         }
     }
+    info!("Finished sample to speed {speed} in {}ms", now.elapsed().as_millis());
+    
     result
 }
