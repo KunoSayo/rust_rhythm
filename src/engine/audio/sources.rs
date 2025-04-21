@@ -1,12 +1,14 @@
+use crate::engine::OutputStreamHandle;
+use crossbeam::atomic::AtomicCell;
 use num::CheckedMul;
 use rodio::buffer::SamplesBuffer;
 use rodio::source::{SeekError, TrackPosition};
 use rodio::{Sample, Source};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::ops::Add;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
 use std::sync::Arc;
-use std::time::Duration;
-use crate::engine::OutputStreamHandle;
+use std::time::{Duration, Instant};
 
 enum ControlEvent {
     SetVol(f32),
@@ -17,11 +19,11 @@ enum ControlEvent {
 
 #[derive(Clone, Default)]
 struct SharedMem {
-    duration: Arc<AtomicU64>,
+    duration: Arc<AtomicCell<(Duration, Option<Instant>)>>,
     stopped: Arc<AtomicBool>,
 }
 
-pub const DELAY_MS_ALLOW: u32 = 5;
+pub const DELAY_MS_ALLOW: u32 = 10;
 
 struct ControlledSampleBuffers {
     buffer: TrackPosition<SamplesBuffer>,
@@ -36,6 +38,21 @@ struct ControlledSampleBuffers {
 }
 
 impl ControlledSampleBuffers {
+    fn update_pos(&self) {
+        self.shared.duration.store((
+            self.buffer.get_pos(),
+            if self.pause || self.stop {
+                None
+            } else {
+                Some(Instant::now())
+            },
+        ));
+    }
+    fn stop(&mut self) {
+        self.stop = true;
+        self.shared.stopped.store(true, Ordering::Relaxed);
+        self.update_pos();
+    }
     fn new(
         buffer: SamplesBuffer,
         update_dur: Duration,
@@ -66,30 +83,30 @@ impl ControlledSampleBuffers {
     }
 
     fn update_info(&mut self) {
-        self.shared
-            .duration
-            .store(self.buffer.get_pos().as_micros() as u64, Ordering::Relaxed);
         loop {
             match self.rx.try_recv() {
                 Ok(event) => match event {
                     ControlEvent::SetVol(vol) => {
                         self.vol = vol;
                     }
-                    ControlEvent::Seek(d) => self.buffer.try_seek(d).unwrap(),
+                    ControlEvent::Seek(d) => {
+                        self.buffer.try_seek(d).unwrap();
+                        self.update_pos();
+                    }
                     ControlEvent::Stop => {
-                        self.stop = true;
+                        self.stop();
                     }
                     ControlEvent::Play => {
                         self.pause = false;
                     }
                 },
                 Err(TryRecvError::Disconnected) => {
-                    self.stop = true;
-                    self.shared.stopped.store(true, Ordering::Relaxed);
+                    self.stop();
                 }
                 Err(TryRecvError::Empty) => break,
             }
         }
+        self.update_pos();
     }
 }
 
@@ -120,7 +137,10 @@ impl Iterator for ControlledSampleBuffers {
 impl Source for ControlledSampleBuffers {
     fn current_span_len(&self) -> Option<usize> {
         // we update per ms
-        Some((DELAY_MS_ALLOW * self.buffer.sample_rate() * self.buffer.channels() as u32 / 1000).max(1) as usize)
+        Some(
+            (DELAY_MS_ALLOW * self.buffer.sample_rate() * self.buffer.channels() as u32 / 1000)
+                .max(1) as usize,
+        )
     }
 
     fn channels(&self) -> u16 {
@@ -156,8 +176,12 @@ impl ControlledBufferHandle {
     pub fn new(output: &OutputStreamHandle, buffer: SamplesBuffer) -> anyhow::Result<Self> {
         let mem = SharedMem::default();
         let (tx, rx) = channel();
-        let source =
-            ControlledSampleBuffers::new(buffer, Duration::from_millis(DELAY_MS_ALLOW as u64), mem.clone(), rx);
+        let source = ControlledSampleBuffers::new(
+            buffer,
+            Duration::from_millis(DELAY_MS_ALLOW as u64),
+            mem.clone(),
+            rx,
+        );
         output.add(source);
         let this = Self { tx, mem, vol: 1.0 };
         Ok(this)
@@ -172,8 +196,9 @@ impl ControlledBufferHandle {
         let _ = self.tx.send(ControlEvent::SetVol(vol));
     }
 
-    pub fn get_micros(&self) -> u64 {
-        self.mem.duration.load(Ordering::Relaxed)
+    pub fn get_pos(&self) -> Duration {
+        let (base, time) = self.mem.duration.load();
+        base.add(time.map(|x| x.elapsed()).unwrap_or(Duration::ZERO))
     }
 
     pub fn seek_to(&self, d: Duration) {

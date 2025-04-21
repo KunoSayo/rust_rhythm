@@ -82,7 +82,7 @@ impl GamingState {
         if self.sink.is_stopped() {
             return self.total_duration.as_secs_f64();
         }
-        self.sink.get_micros() as f64 / 1_000_000.0 - 3.0
+        self.sink.get_pos().as_secs_f64() - 3.0
     }
 
     pub fn new(
