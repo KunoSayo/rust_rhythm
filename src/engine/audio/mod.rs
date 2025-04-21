@@ -1,28 +1,77 @@
 use crate::engine::ResourceLocation;
+use cpal::traits::{DeviceTrait, HostTrait};
+use cpal::{SupportedBufferSize, SupportedStreamConfig};
 use egui::ahash::HashMap;
 use log::info;
 use rodio::buffer::SamplesBuffer;
-use rodio::{OutputStreamHandle, Sink};
+use rodio::source::SeekError;
+use rodio::{OutputStream, OutputStreamHandle, Sink, Source, StreamError};
 use rubato::{
     Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction,
 };
 use std::collections::VecDeque;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
+use std::time::Duration;
+
+pub mod sources;
 
 pub struct AudioData {
     pub stream: rodio::OutputStream,
     pub stream_handle: OutputStreamHandle,
     pub cached_sfx: HashMap<ResourceLocation, SamplesBuffer<f32>>,
     sink_pool: VecDeque<Sink>,
-
 }
 
 impl AudioData {
+    fn create_output_stream(
+        device: &rodio::Device,
+    ) -> Result<(OutputStream, OutputStreamHandle), StreamError> {
+        let cfg = device
+            .default_output_config()
+            .map_err(|e| StreamError::DefaultStreamConfigError(e))?;
+
+        let (cfg_min, cfg_max) = match cfg.buffer_size() {
+            SupportedBufferSize::Range { min, max } => (*min, *max),
+            SupportedBufferSize::Unknown => (1, cfg.sample_rate().0),
+        };
+        // we require 0.1 ms to update.
+        let my_max = 1.max(cfg.sample_rate().0 / 1_000 / 10);
+        let cfg = SupportedStreamConfig::new(
+            cfg.channels(),
+            cfg.sample_rate(),
+            SupportedBufferSize::Range {
+                min: cfg_min.min(my_max),
+                max: cfg_max.min(my_max),
+            },
+            cfg.sample_format(),
+        );
+        OutputStream::try_from_device_config(device, cfg)
+    }
+    fn create_stream() -> Result<(OutputStream, OutputStreamHandle), StreamError> {
+        let default_device = cpal::default_host()
+            .default_output_device()
+            .ok_or(StreamError::NoDevice)?;
+
+        let process_device = |device: rodio::Device| -> rodio::Device { device };
+
+        let default_stream = Self::create_output_stream(&default_device);
+
+        default_stream.or_else(|original_err| {
+            let mut devices = match cpal::default_host().output_devices() {
+                Ok(d) => d,
+                Err(_) => return Err(original_err),
+            };
+
+            devices
+                .find_map(|d| Self::create_output_stream(&d).ok())
+                .ok_or(original_err)
+        })
+    }
     pub fn new() -> anyhow::Result<AudioData> {
-        let (stream, handle) = rodio::OutputStream::try_default()?;
+        let (stream, handle) = Self::create_stream()?;
         let mut sink_pool = VecDeque::default();
-        sink_pool.resize_with(8, || {
-            Sink::try_new(&handle).expect("Why cannot new")
-        });
+        sink_pool.resize_with(8, || Sink::try_new(&handle).expect("Why cannot new"));
         Ok(Self {
             stream,
             stream_handle: handle,
@@ -63,7 +112,7 @@ pub fn sample_change_speed(samples: &[i16], channels: usize, speed: f32) -> Vec<
         samples.len() / channels,
         channels,
     )
-        .expect("Failed to get resampler");
+    .expect("Failed to get resampler");
     let audio_data = samples
         .iter()
         .map(|x| (*x as f64) / (i16::MAX - 1) as f64)

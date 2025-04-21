@@ -8,6 +8,8 @@ use egui::{Rect, Vec2};
 
 pub type MsType = i64;
 pub type OffsetType = MsType;
+/// The game time in seconds.
+pub type GameTimeType = f64;
 
 pub mod note;
 pub mod song;
@@ -17,14 +19,14 @@ pub mod render;
 
 #[inline]
 #[must_use]
-pub fn secs_to_offset_type(sec: f32) -> OffsetType {
-    (sec * 1000.0).round() as OffsetType
+pub fn secs_to_offset_type(sec: impl Into<f64>) -> OffsetType {
+    (sec.into() * 1000.0).round() as OffsetType
 }
 
 #[inline]
 #[must_use]
-pub fn offset_type_to_secs(offset: OffsetType) -> f32 {
-    offset as f32 / 1000.0
+pub fn offset_type_to_secs(offset: OffsetType) -> GameTimeType {
+    offset as GameTimeType / 1000.0
 }
 
 pub fn get_play_rect(rect: Rect) -> Rect {

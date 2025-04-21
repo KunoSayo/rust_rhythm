@@ -2,7 +2,7 @@ use crate::game::beatmap::file::SongBeatmapFile;
 use crate::game::beatmap::GamePos;
 use crate::game::note::{LongNote, NormalNote, Note, NoteExt, NoteHitType};
 use crate::game::timing::{TimingGroup, TimingLine};
-use crate::game::{offset_type_to_secs, secs_to_offset_type, OffsetType};
+use crate::game::{offset_type_to_secs, secs_to_offset_type, GameTimeType, OffsetType};
 use egui::ahash::{HashMap, HashSet};
 use std::collections::VecDeque;
 
@@ -295,14 +295,14 @@ impl<T: Note> TrackNotes<T> {
         &mut self,
         ops: &PlayOptions,
         judge_times: &JudgeTimes,
-        game_time: f32,
+        game_time: GameTimeType,
         mut callback: impl FnMut(&mut PlayingNote<T>, NoteHitResult),
     ) {
         let offset = secs_to_offset_type(game_time);
 
         // move pending to play area for some lag case.
         while let Some(note) = self.pending.front() {
-            if note.note.get_time() <= secs_to_offset_type(game_time + ops.default_view_time + 1.0)
+            if note.note.get_time() <= secs_to_offset_type(game_time + ops.default_view_time as GameTimeType + 1.0)
             {
                 unsafe {
                     // SAFETY: we just got the front.
@@ -357,7 +357,7 @@ pub struct Gaming {
 impl Gaming {
     fn tick_track(
         &mut self,
-        game_time: f32,
+        game_time: GameTimeType,
         mut callback: Option<impl FnMut(PlayingNoteType, NoteHitResult)>,
     ) {
         for x in self.normal_notes.iter_mut() {
@@ -486,7 +486,7 @@ impl Gaming {
 
     pub fn tick(
         &mut self,
-        game_time: f32,
+        game_time: GameTimeType,
         callback: Option<impl FnMut(PlayingNoteType, NoteHitResult)>,
     ) {
         self.tick_track(game_time, callback);

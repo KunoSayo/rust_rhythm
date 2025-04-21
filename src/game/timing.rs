@@ -1,4 +1,4 @@
-use crate::game::OffsetType;
+use crate::game::{GameTimeType, OffsetType};
 use egui::{Color32, NumExt};
 use ron::extensions::Extensions;
 use ron::Options;
@@ -397,13 +397,13 @@ impl TimingGroup {
         tl.get_y(time) * view_secs
     }
 
-    pub fn get_gameplay_y_f32(&self, time: f32, timing_group: u8, view_secs: f32) -> f32 {
+    pub fn get_gameplay_y_game_time(&self, time: GameTimeType, timing_group: u8, view_secs: f32) -> f32 {
         let tl = if let Some(tl) = self.timing_lines.get(timing_group as usize) {
             tl
         } else {
             &DEFAULT_TIMING_LINE
         };
-        tl.get_y_f32(time) * view_secs
+        tl.get_y_f32(time as f32) * view_secs as f32
     }
 
     pub fn get_beat_iterator(

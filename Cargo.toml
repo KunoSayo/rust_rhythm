@@ -32,7 +32,7 @@ tokio = { version = "1.27.0", features = ["full"] }
 futures = { version = "0.3.24", features = ["executor", "thread-pool"] }
 
 # audio
-rodio = "0.20.1"
+rodio = { git = "https://github.com/RustAudio/rodio.git", branch = "0.21" }
 cpal = "0.15.3"
 rubato = { version = "0.16.2" }
 

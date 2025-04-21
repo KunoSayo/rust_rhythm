@@ -731,7 +731,8 @@ impl BeatMapEditor {
                         let right_center = (progress_end, y_center);
 
                         for x in self.beatmap.timing_group.get_timing(self.input_cache.select_timing_group, 0) {
-                            let progress = offset_type_to_secs(x.offset) / self.total_duration.as_secs_f32();
+                            let progress = offset_type_to_secs(x.offset) / self.total_duration.as_secs_f64();
+                            let progress = progress as f32;
 
                             if x.set_bpm.is_some() {
                                 painter.vline(

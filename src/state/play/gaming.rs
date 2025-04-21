@@ -1,5 +1,6 @@
 use crate::engine::global::STATIC_DATA;
 use crate::engine::renderer::texture_renderer::TextureRenderer;
+use crate::engine::sources::ControlledBufferHandle;
 use crate::engine::{
     EasyGuiExt, GameState, LoopState, ResourceLocation, StateData, StateEvent, Trans,
 };
@@ -9,7 +10,7 @@ use crate::game::beatmap::summary::BeatmapPlayResult;
 use crate::game::beatmap::{GamePos, FOUR_KEY_X};
 use crate::game::render::NoteRenderer;
 use crate::game::song::SongInfo;
-use crate::game::{get_play_rect, secs_to_offset_type};
+use crate::game::{get_play_rect, secs_to_offset_type, GameTimeType, OffsetType};
 use crate::state::play::end::EndResultState;
 use anyhow::anyhow;
 use egui::{
@@ -73,17 +74,17 @@ pub struct GamingState {
     /// the pointer pos when last update.
     gaming: Box<Gaming>,
     game_rect: Rect,
-    sink: Sink,
+    sink: ControlledBufferHandle,
     score_display: ScoreDisplay,
     end_remaining: Option<f32>,
 }
 
 impl GamingState {
-    pub(crate) fn get_game_time(&self) -> f32 {
-        if self.sink.len() == 0 {
-            return self.total_duration.as_secs_f32();
+    pub(crate) fn get_game_time(&self) -> GameTimeType {
+        if self.sink.is_stopped() {
+            return self.total_duration.as_secs_f64();
         }
-        self.sink.get_pos().as_secs_f32() - 3.0 * (self.sink.len().max(1) - 1) as f32
+        self.sink.get_micros() as f64 / 1_000_000.0 - 3.0
     }
 
     pub fn new(
@@ -91,8 +92,6 @@ impl GamingState {
         song_info: &SongInfo,
         beatmap_file: SongBeatmapFile,
     ) -> anyhow::Result<Self> {
-        let sink = Sink::try_new(&handle)?;
-
         let mut buf = vec![];
         let mut file = std::fs::File::open(&song_info.bgm_file)?;
         file.read_to_end(&mut buf)?;
@@ -106,25 +105,23 @@ impl GamingState {
             .total_duration()
             .ok_or(anyhow!("No audio duration"))?
             .add(Duration::from_secs_f32(3.0));
-
-        // append blank
-        {
-            sink.append(SamplesBuffer::new(
-                samples.channels(),
-                samples.sample_rate(),
-                &vec![0i16; (samples.channels() as u32 * samples.sample_rate()) as usize * 3][..],
-            ));
-            sink.pause();
-            sink.try_seek(Duration::ZERO).expect("?");
+        if total_duration.as_secs() >= 2 * 60 * 60 {
+            return Err(anyhow!("Cannot play audio with length >= 2h"));
         }
-        sink.append(samples);
-        sink.pause();
-        sink.try_seek(Duration::ZERO).expect("?");
+
+        let mut buffer_data =
+            vec![0.0_f32; (samples.channels() as u32 * samples.sample_rate()) as usize * 3];
+        let channels = samples.channels();
+        let rate = samples.sample_rate();
+        buffer_data.append(&mut samples.convert_samples().collect::<Vec<f32>>());
+
         let vol = STATIC_DATA
             .cfg_data
             .write()
             .map_err(|e| anyhow!("Cannot read lock for {:?}", e))?
             .get_f32_def("bgm_vol", 1.0);
+        let mut sink =
+            ControlledBufferHandle::new(&handle, SamplesBuffer::new(channels, rate, buffer_data))?;
         sink.set_volume(vol);
 
         let this = Self {
@@ -170,8 +167,7 @@ impl GameState for GamingState {
         {
             trans = Trans::Pop;
         }
-        if s.app.inputs.is_pressed(&[PhysicalKey::Code(KeyCode::Tab)])
-        {
+        if s.app.inputs.is_pressed(&[PhysicalKey::Code(KeyCode::Tab)]) {
             self.gaming.auto_play = !self.gaming.auto_play;
         }
         match &mut self.end_remaining {
@@ -197,6 +193,9 @@ impl GameState for GamingState {
     fn render(&mut self, s: &mut StateData, ctx: &Context) -> Trans {
         let mut trans = Trans::None;
         let game_time = self.get_game_time();
+        if log::log_enabled!(target: "Gameplay", log::Level::Trace) {
+            log::trace!(target: "Gameplay", "{} when {}", game_time, self.start_time.elapsed().as_secs_f64());
+        }
         let tick_sound_res: ResourceLocation = ResourceLocation::from_name("tick");
         self.gaming.tick(
             game_time,
@@ -225,7 +224,7 @@ impl GameState for GamingState {
         let gpu = s.app.gpu.as_mut().unwrap();
         let mut nr = s.app.world.fetch_mut::<NoteRenderer>();
         for (timing_group, x) in self.gaming.normal_notes.iter().enumerate() {
-            let current_y = self.gaming.raw_file.timing_group.get_gameplay_y_f32(
+            let current_y = self.gaming.raw_file.timing_group.get_gameplay_y_game_time(
                 game_time,
                 timing_group as u8,
                 self.gaming.ops.default_view_time,
@@ -235,7 +234,7 @@ impl GameState for GamingState {
             nr.collect_playing_notes(normal_b, gpu.get_screen_size_f32(), current_y);
         }
         for (timing_group, x) in self.gaming.long_notes.iter().enumerate() {
-            let current_y = self.gaming.raw_file.timing_group.get_gameplay_y_f32(
+            let current_y = self.gaming.raw_file.timing_group.get_gameplay_y_game_time(
                 game_time,
                 timing_group as u8,
                 self.gaming.ops.default_view_time,
@@ -302,9 +301,9 @@ impl GameState for GamingState {
         match event {
             StateEvent::Window(event, time) => match event {
                 WindowEvent::KeyboardInput {
-                    device_id,
                     event,
                     is_synthetic,
+                    ..
                 } => {
                     if *is_synthetic || event.repeat {
                         return;
@@ -313,7 +312,7 @@ impl GameState for GamingState {
                         PhysicalKey::Code(code) => match code {
                             _ => {
                                 let input_game_time =
-                                    self.get_game_time() - time.elapsed().as_secs_f32();
+                                    self.get_game_time() - time.elapsed().as_secs_f64();
 
                                 let input_x = match code {
                                     KeyCode::KeyD => FOUR_KEY_X[0],
@@ -325,13 +324,13 @@ impl GameState for GamingState {
                                 let game_input =
                                     GamePos::new(input_x, secs_to_offset_type(input_game_time));
 
-
                                 if event.state.is_pressed() {
                                     if let Some((result, is_long)) = self
                                         .gaming
                                         .process_input(game_input, ((input_x + 0.75) * 4.0) as _)
                                     {
-                                        self.hit_feedback.last_result = Some((result, Instant::now()));
+                                        self.hit_feedback.last_result =
+                                            Some((result, Instant::now()));
                                         if !result.is_miss() {
                                             let tick_sound_res: ResourceLocation =
                                                 ResourceLocation::from_name("tick");
@@ -339,14 +338,16 @@ impl GameState for GamingState {
                                         }
                                     }
                                 } else {
-                                    self.gaming
-                                        .process_input_leave(game_input, ((input_x + 0.75) * 4.0) as _);
+                                    self.gaming.process_input_leave(
+                                        game_input,
+                                        ((input_x + 0.75) * 4.0) as _,
+                                    );
                                 }
                             }
                         },
                         PhysicalKey::Unidentified(_) => {}
                     }
-                },
+                }
                 WindowEvent::Resized(size) => self.update_game_region(*size),
                 _ => {}
             },
