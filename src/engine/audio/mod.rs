@@ -29,34 +29,28 @@ pub struct AudioData {
 }
 
 impl AudioData {
-    fn create_output_stream(
+    fn create_stream_from_device(
         device: rodio::Device,
     ) -> Result<(OutputStream), StreamError> {
-        let cfg = device
-            .default_output_config()
-            .map_err(|e| StreamError::DefaultStreamConfigError(e))?;
-
-        let (cfg_min, cfg_max) = match cfg.buffer_size() {
-            SupportedBufferSize::Range { min, max } => (*min, *max),
-            SupportedBufferSize::Unknown => (1, cfg.sample_rate().0),
-        };
-        // we require 2 ms to update.
-        let my_max = 1.max(cfg.sample_rate().0 * 2 / 1_000);
-        let cfg = SupportedStreamConfig::new(
-            cfg.channels(),
-            cfg.sample_rate(),
-            SupportedBufferSize::Range {
-                min: cfg_min.min(my_max),
-                max: cfg_max.min(my_max),
-            },
-            cfg.sample_format(),
-        );
+        // let cfg = device
+        //     .default_output_config()
+        //     .map_err(|e| StreamError::DefaultStreamConfigError(e))?;
+        // 
+        // let (cfg_min, cfg_max) = match cfg.buffer_size() {
+        //     SupportedBufferSize::Range { min, max } => (*min, *max),
+        //     SupportedBufferSize::Unknown => (1, cfg.sample_rate().0),
+        // };
+        // let my_max = 1.max(cfg.sample_rate().0 * 1 / 1_0000);
+        // let cfg = SupportedStreamConfig::new(
+        //     cfg.channels(),
+        //     cfg.sample_rate(),
+        //     SupportedBufferSize::Range {
+        //         min: cfg_min.min(my_max),
+        //         max: cfg_max.min(my_max),
+        //     },
+        //     cfg.sample_format(),
+        // );
         rodio::OutputStreamBuilder::from_device(device)?
-            .with_config(&StreamConfig {
-                channels: cfg.channels(),
-                sample_rate: cfg.sample_rate(),
-                buffer_size: BufferSize::Default,
-            })
             .open_stream()
 
     }
@@ -67,7 +61,7 @@ impl AudioData {
 
         let process_device = |device: rodio::Device| -> rodio::Device { device };
 
-        let default_stream = Self::create_output_stream(default_device);
+        let default_stream = Self::create_stream_from_device(default_device);
 
         default_stream.or_else(|original_err| {
             let mut devices = match cpal::default_host().output_devices() {
@@ -76,7 +70,7 @@ impl AudioData {
             };
 
             devices
-                .find_map(|d| Self::create_output_stream(d).ok())
+                .find_map(|d| Self::create_stream_from_device(d).ok())
                 .ok_or(original_err)
         })
     }
