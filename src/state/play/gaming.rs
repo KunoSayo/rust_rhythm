@@ -270,10 +270,11 @@ impl GameState for GamingState {
                     }
                 });
 
+                // the center line
                 ui.painter().hline(
                     ui.max_rect().x_range(),
                     self.game_rect.center().y,
-                    Stroke::new(1.0, Color32::WHITE),
+                    Stroke::new(5.0, Color32::GRAY),
                 );
 
                 ui.with_layout(Layout::bottom_up(Align::Center), |ui| {

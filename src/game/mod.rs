@@ -4,7 +4,7 @@
 //!
 //! `SongBeatMap` represent real playing beatmap in the game.
 
-use egui::{Rect, Vec2};
+use egui::{NumExt, Rect, Vec2};
 
 pub type MsType = i64;
 pub type OffsetType = MsType;
@@ -31,15 +31,19 @@ pub fn offset_type_to_secs(offset: OffsetType) -> GameTimeType {
 
 pub fn get_play_rect(rect: Rect) -> Rect {
     let center_point = rect.center();
+    // 4:3 play area.
     
-    let (half_x, half_y) = if rect.height() <= rect.width() {
+    // if 100x75 => we expand top
+    // if 100x10 => we expand top
+    // if 100x200=> we expand left
+    let (half_x, half_y) = if rect.height() * 3.0 <= rect.width() * 4.0 {
         // expand to the top
-        let half_y = rect.height() / 2.0 - 10.0;
+        let half_y = (rect.height() / 2.0 - 10.0).at_least(0.0);
         let half_x = half_y * 4.0 / 3.0;
         (half_x, half_y)
     } else {
         // expand to the left
-        let half_x = rect.width() / 2.0 - 10.0;
+        let half_x = (rect.width() / 2.0 - 10.0).at_least(0.0);
         let half_y = half_x * 0.75;
         (half_x, half_y)
     };

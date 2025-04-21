@@ -253,7 +253,7 @@ impl NoteRenderer {
         tr: &TextureRenderer,
         vp: &Rect,
     ) {
-        if vp.is_negative() || vp.any_nan() || vp.area() <= 0.0 {
+        if vp.is_negative() || vp.any_nan() || vp.area() <= 0.0 || vp.left() < 0.0 || vp.top() < 0.0 {
             return;
         }
         let device = &gpu.device;
