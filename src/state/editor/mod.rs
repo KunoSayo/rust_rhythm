@@ -1,10 +1,12 @@
-mod util;
 mod editor;
-mod timing_editor;
-mod settings_editor;
 mod note_editor;
+mod settings_editor;
+mod timing_editor;
+mod util;
 
-use crate::engine::{GameState, LoopState, StateData, StateEvent, Trans, WaitFutureState, WaitResult};
+use crate::engine::{
+    GameState, LoopState, StateData, StateEvent, Trans, WaitFutureState, WaitResult,
+};
 use crate::game::song::{SongManager, SongManagerResourceType};
 use crate::state::editor::editor::BeatMapEditor;
 use crate::ui::song_list::SongListUi;
@@ -20,19 +22,25 @@ pub struct EditorMenu {
 
 impl EditorMenu {
     pub fn new() -> Self {
-        Self { ui: Default::default() }
+        Self {
+            ui: Default::default(),
+        }
     }
 
     fn update_ui(&mut self, s: &mut StateData) {
-        let songs = s.wd.world.get_mut::<SongManagerResourceType>().unwrap().songs.iter()
-            .map(|x| x.value().clone())
-            .collect::<Vec<_>>();
+        let songs =
+            s.wd.world
+                .get_mut::<SongManagerResourceType>()
+                .unwrap()
+                .songs
+                .iter()
+                .map(|x| x.value().clone())
+                .collect::<Vec<_>>();
         if !songs.par_iter().any(|x| x.dirty.load(Ordering::Relaxed)) {
             self.ui.update_songs(songs);
         }
     }
 }
-
 
 impl GameState for EditorMenu {
     fn start(&mut self, s: &mut StateData) -> LoopState {
@@ -41,11 +49,19 @@ impl GameState for EditorMenu {
     }
 
     fn update(&mut self, s: &mut StateData) -> (Trans, LoopState) {
-        if self.ui.songs().par_iter().any(|x| x.dirty.load(Ordering::Relaxed)) {
+        if self
+            .ui
+            .songs()
+            .par_iter()
+            .any(|x| x.dirty.load(Ordering::Relaxed))
+        {
             self.update_ui(s);
         }
         let mut tran = Trans::None;
-        if s.app.inputs.is_pressed(&[PhysicalKey::Code(KeyCode::Escape)]) {
+        if s.app
+            .inputs
+            .is_pressed(&[PhysicalKey::Code(KeyCode::Escape)])
+        {
             tran = Trans::Pop;
         }
         (tran, LoopState::WAIT)
@@ -71,9 +87,11 @@ impl GameState for EditorMenu {
 
                         if ui.button("Music | 音乐").clicked() {
                             if let Some(music) = util::select_music_file(&s.app.window) {
-                                let song_manager = s.wd.world.get_mut::<Arc<SongManager>>()
-                                    .expect("How can we lost song manager")
-                                    .clone();
+                                let song_manager =
+                                    s.wd.world
+                                        .get_mut::<Arc<SongManager>>()
+                                        .expect("How can we lost song manager")
+                                        .clone();
 
                                 let handle = s.app.audio.as_ref().unwrap().stream_handle.clone();
                                 tran = Trans::Push(WaitFutureState::wait_task(async move {
@@ -87,18 +105,17 @@ impl GameState for EditorMenu {
                                                     WaitResult::Push(editor)
                                                 }
                                                 Err(e) => {
-                                                    log::warn!("Failed to import music for {:?}", e);
-                                                    WaitResult::Function(Box::new(|_| {
-                                                        Trans::None
-                                                    }))
+                                                    log::warn!(
+                                                        "Failed to import music for {:?}",
+                                                        e
+                                                    );
+                                                    WaitResult::Function(Box::new(|_| Trans::None))
                                                 }
                                             }
                                         }
                                         Err(e) => {
                                             log::warn!("Failed to import music for {:?}", e);
-                                            WaitResult::Function(Box::new(|_| {
-                                                Trans::None
-                                            }))
+                                            WaitResult::Function(Box::new(|_| Trans::None))
                                         }
                                     }
                                 }));
@@ -118,7 +135,11 @@ impl GameState for EditorMenu {
                 ui.allocate_new_ui(builder, |ui| {
                     let response = self.ui.ui(ui);
                     if let Some(result) = response.result {
-                        let editor = BeatMapEditor::with_file(result.song, result.beatmap, s.app.audio.as_ref().unwrap().stream_handle.clone());
+                        let editor = BeatMapEditor::with_file(
+                            result.song,
+                            result.beatmap,
+                            s.app.audio.as_ref().unwrap().stream_handle.clone(),
+                        );
                         match editor {
                             Ok(editor) => {
                                 let editor = Box::new(editor);

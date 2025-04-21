@@ -253,6 +253,9 @@ impl NoteRenderer {
         tr: &TextureRenderer,
         vp: &Rect,
     ) {
+        if vp.is_negative() || vp.any_nan() || vp.area() <= 0.0 {
+            return;
+        }
         let device = &gpu.device;
         let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor {
             label: Some("Note Renderer"),

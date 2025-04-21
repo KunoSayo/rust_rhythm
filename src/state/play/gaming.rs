@@ -1,9 +1,7 @@
 use crate::engine::global::STATIC_DATA;
 use crate::engine::renderer::texture_renderer::TextureRenderer;
 use crate::engine::sources::ControlledBufferHandle;
-use crate::engine::{
-    EasyGuiExt, GameState, LoopState, ResourceLocation, StateData, StateEvent, Trans,
-};
+use crate::engine::{EasyGuiExt, GameState, LoopState, OutputStreamHandle, ResourceLocation, StateData, StateEvent, Trans};
 use crate::game::beatmap::file::SongBeatmapFile;
 use crate::game::beatmap::play::{Gaming, NoteHitResult, NoteResult, PlayingNoteType};
 use crate::game::beatmap::summary::BeatmapPlayResult;
@@ -17,7 +15,7 @@ use egui::{
     Align, Color32, Context, Frame, Layout, Pos2, Rect, RichText, Stroke, TextStyle, Vec2, Widget,
 };
 use rodio::buffer::SamplesBuffer;
-use rodio::{Decoder, OutputStreamHandle, Sink, Source};
+use rodio::{Decoder, Sink, Source};
 use std::io::{Cursor, Read};
 use std::ops::{Add, Deref};
 use std::time::Duration;
@@ -99,7 +97,7 @@ impl GamingState {
         let buf = Cursor::new(buf);
         let decoder = Decoder::new(buf.clone())?;
 
-        let samples = decoder.convert_samples::<f32>();
+        let samples = decoder;
 
         let total_duration = samples
             .total_duration()
@@ -113,7 +111,7 @@ impl GamingState {
             vec![0.0_f32; (samples.channels() as u32 * samples.sample_rate()) as usize * 3];
         let channels = samples.channels();
         let rate = samples.sample_rate();
-        buffer_data.append(&mut samples.convert_samples().collect::<Vec<f32>>());
+        buffer_data.append(&mut samples.collect::<Vec<f32>>());
 
         let vol = STATIC_DATA
             .cfg_data
@@ -194,7 +192,8 @@ impl GameState for GamingState {
         let mut trans = Trans::None;
         let game_time = self.get_game_time();
         if log::log_enabled!(target: "Gameplay", log::Level::Trace) {
-            log::trace!(target: "Gameplay", "{} when {}", game_time, self.start_time.elapsed().as_secs_f64());
+            let elapsed = self.start_time.elapsed().as_secs_f64();
+            log::trace!(target: "Gameplay", "{} when {} (delta: {})", game_time, elapsed, elapsed - game_time);
         }
         let tick_sound_res: ResourceLocation = ResourceLocation::from_name("tick");
         self.gaming.tick(

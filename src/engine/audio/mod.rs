@@ -1,32 +1,37 @@
 use crate::engine::ResourceLocation;
 use cpal::traits::{DeviceTrait, HostTrait};
-use cpal::{SupportedBufferSize, SupportedStreamConfig};
+use cpal::{BufferSize, StreamConfig, SupportedBufferSize, SupportedStreamConfig};
 use egui::ahash::HashMap;
 use log::info;
 use rodio::buffer::SamplesBuffer;
 use rodio::source::SeekError;
-use rodio::{OutputStream, OutputStreamHandle, Sink, Source, StreamError};
+use rodio::{OutputStream, Sink, Source, StreamError};
 use rubato::{
     Resampler, SincFixedIn, SincInterpolationParameters, SincInterpolationType, WindowFunction,
 };
 use std::collections::VecDeque;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::sync::atomic::AtomicBool;
 use std::time::Duration;
+use rodio::mixer::Mixer;
 
 pub mod sources;
 
+
+pub type OutputStreamHandle = Mixer;
+
+
 pub struct AudioData {
-    pub stream: rodio::OutputStream,
-    pub stream_handle: OutputStreamHandle,
-    pub cached_sfx: HashMap<ResourceLocation, SamplesBuffer<f32>>,
+    stream: OutputStream,
+    pub stream_handle: Mixer,
+    pub cached_sfx: HashMap<ResourceLocation, SamplesBuffer>,
     sink_pool: VecDeque<Sink>,
 }
 
 impl AudioData {
     fn create_output_stream(
-        device: &rodio::Device,
-    ) -> Result<(OutputStream, OutputStreamHandle), StreamError> {
+        device: rodio::Device,
+    ) -> Result<(OutputStream), StreamError> {
         let cfg = device
             .default_output_config()
             .map_err(|e| StreamError::DefaultStreamConfigError(e))?;
@@ -35,8 +40,8 @@ impl AudioData {
             SupportedBufferSize::Range { min, max } => (*min, *max),
             SupportedBufferSize::Unknown => (1, cfg.sample_rate().0),
         };
-        // we require 0.1 ms to update.
-        let my_max = 1.max(cfg.sample_rate().0 / 1_000 / 10);
+        // we require 2 ms to update.
+        let my_max = 1.max(cfg.sample_rate().0 * 2 / 1_000);
         let cfg = SupportedStreamConfig::new(
             cfg.channels(),
             cfg.sample_rate(),
@@ -46,16 +51,23 @@ impl AudioData {
             },
             cfg.sample_format(),
         );
-        OutputStream::try_from_device_config(device, cfg)
+        rodio::OutputStreamBuilder::from_device(device)?
+            .with_config(&StreamConfig {
+                channels: cfg.channels(),
+                sample_rate: cfg.sample_rate(),
+                buffer_size: BufferSize::Default,
+            })
+            .open_stream()
+
     }
-    fn create_stream() -> Result<(OutputStream, OutputStreamHandle), StreamError> {
+    fn create_stream() -> Result<(OutputStream), StreamError> {
         let default_device = cpal::default_host()
             .default_output_device()
             .ok_or(StreamError::NoDevice)?;
 
         let process_device = |device: rodio::Device| -> rodio::Device { device };
 
-        let default_stream = Self::create_output_stream(&default_device);
+        let default_stream = Self::create_output_stream(default_device);
 
         default_stream.or_else(|original_err| {
             let mut devices = match cpal::default_host().output_devices() {
@@ -64,17 +76,18 @@ impl AudioData {
             };
 
             devices
-                .find_map(|d| Self::create_output_stream(&d).ok())
+                .find_map(|d| Self::create_output_stream(d).ok())
                 .ok_or(original_err)
         })
     }
     pub fn new() -> anyhow::Result<AudioData> {
-        let (stream, handle) = Self::create_stream()?;
+        let (stream) = Self::create_stream()?;
         let mut sink_pool = VecDeque::default();
-        sink_pool.resize_with(8, || Sink::try_new(&handle).expect("Why cannot new"));
+        sink_pool.resize_with(8, || Sink::connect_new(stream.mixer()));
+        let stream_handle = stream.mixer().clone();
         Ok(Self {
             stream,
-            stream_handle: handle,
+            stream_handle,
             cached_sfx: Default::default(),
             sink_pool,
         })
@@ -87,7 +100,8 @@ impl AudioData {
                 front_sink.append(buffer.clone());
                 let front_sink = self.sink_pool.pop_front().unwrap();
                 self.sink_pool.push_back(front_sink);
-            } else if let Ok(sink) = Sink::try_new(&self.stream_handle) {
+            } else  {
+                let sink = Sink::connect_new(&self.stream_handle);
                 sink.append(buffer.clone());
                 sink.detach()
             }
@@ -97,7 +111,7 @@ impl AudioData {
 
 impl AudioData {}
 
-pub fn sample_change_speed(samples: &[i16], channels: usize, speed: f32) -> Vec<i16> {
+pub fn sample_change_speed(samples: &[f32], channels: usize, speed: f32) -> Vec<f32> {
     let params = SincInterpolationParameters {
         sinc_len: 256,
         f_cutoff: 0.95,
@@ -119,7 +133,7 @@ pub fn sample_change_speed(samples: &[i16], channels: usize, speed: f32) -> Vec<
         .collect::<Vec<_>>();
     let mut chunks = vec![vec![]; channels];
 
-    let f64_to_i16 = |x: f64| (x * (i16::MAX - 1) as f64).round() as i16;
+    let f64_to_i16 = |x: f64| (x * (i16::MAX - 1) as f64).round() as f32;
     audio_data.chunks(channels).for_each(|x| {
         for (idx, value) in x.iter().enumerate() {
             chunks[idx].push(*value);

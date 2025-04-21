@@ -1,11 +1,12 @@
 use num::CheckedMul;
 use rodio::buffer::SamplesBuffer;
 use rodio::source::{SeekError, TrackPosition};
-use rodio::{OutputStreamHandle, Sample, Source};
+use rodio::{Sample, Source};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender, TryRecvError};
 use std::sync::Arc;
 use std::time::Duration;
+use crate::engine::OutputStreamHandle;
 
 enum ControlEvent {
     SetVol(f32),
@@ -20,8 +21,10 @@ struct SharedMem {
     stopped: Arc<AtomicBool>,
 }
 
-struct ControlledSampleBuffers<S> {
-    buffer: TrackPosition<SamplesBuffer<S>>,
+pub const DELAY_MS_ALLOW: u32 = 3;
+
+struct ControlledSampleBuffers {
+    buffer: TrackPosition<SamplesBuffer>,
     update_left: u128,
     update_freq: u128,
     vol: f32,
@@ -32,12 +35,9 @@ struct ControlledSampleBuffers<S> {
     rx: Receiver<ControlEvent>,
 }
 
-impl<S> ControlledSampleBuffers<S>
-where
-    S: Sample,
-{
+impl ControlledSampleBuffers {
     fn new(
-        buffer: SamplesBuffer<S>,
+        buffer: SamplesBuffer,
         update_dur: Duration,
         shared: SharedMem,
         rx: Receiver<ControlEvent>,
@@ -93,11 +93,8 @@ where
     }
 }
 
-impl<S> Iterator for ControlledSampleBuffers<S>
-where
-    S: Sample,
-{
-    type Item = S;
+impl Iterator for ControlledSampleBuffers {
+    type Item = Sample;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.stop {
@@ -106,7 +103,7 @@ where
         if self.pause {
             self.update_info();
             if self.pause {
-                return Some(S::zero_value());
+                return Some(0.0);
             }
         }
         self.update_left -= 1;
@@ -116,16 +113,14 @@ where
             // println!("Update info when {:?}", std::time::Instant::now());
             self.update_info();
         }
-        self.buffer.next().map(|x| x.amplify(self.vol))
+        self.buffer.next().map(|x| x * self.vol)
     }
 }
 
-impl<S> Source for ControlledSampleBuffers<S>
-where
-    S: Sample,
-{
-    fn current_frame_len(&self) -> Option<usize> {
-        Some(1024)
+impl Source for ControlledSampleBuffers {
+    fn current_span_len(&self) -> Option<usize> {
+        // we update per ms
+        Some((DELAY_MS_ALLOW * self.buffer.sample_rate() * self.buffer.channels() as u32 / 1000).max(1) as usize)
     }
 
     fn channels(&self) -> u16 {
@@ -145,7 +140,7 @@ where
     }
 }
 
-impl<T> Drop for ControlledSampleBuffers<T> {
+impl Drop for ControlledSampleBuffers {
     fn drop(&mut self) {
         self.shared.stopped.store(true, Ordering::Relaxed);
     }
@@ -158,12 +153,12 @@ pub struct ControlledBufferHandle {
 }
 
 impl ControlledBufferHandle {
-    pub fn new(output: &OutputStreamHandle, buffer: SamplesBuffer<f32>) -> anyhow::Result<Self> {
+    pub fn new(output: &OutputStreamHandle, buffer: SamplesBuffer) -> anyhow::Result<Self> {
         let mem = SharedMem::default();
         let (tx, rx) = channel();
         let source =
-            ControlledSampleBuffers::new(buffer, Duration::from_micros(250), mem.clone(), rx);
-        output.play_raw(source.convert_samples::<f32>())?;
+            ControlledSampleBuffers::new(buffer, Duration::from_millis(DELAY_MS_ALLOW as u64), mem.clone(), rx);
+        output.add(source);
         let this = Self { tx, mem, vol: 1.0 };
         Ok(this)
     }

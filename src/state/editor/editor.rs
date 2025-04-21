@@ -1,5 +1,5 @@
 use crate::engine::global::{IO_POOL, STATIC_DATA};
-use crate::engine::{get_edit_cache, sample_change_speed, GameState, LoopState, StateData, Trans};
+use crate::engine::{get_edit_cache, sample_change_speed, GameState, LoopState, OutputStreamHandle, StateData, Trans};
 use crate::game::beatmap::file::SongBeatmapFile;
 use crate::game::beatmap::{SongBeatmapInfo, BEATMAP_EXT};
 use crate::game::song::{SongInfo, SongManagerResourceType};
@@ -13,7 +13,7 @@ use egui::{
     TextStyle, Ui, UiBuilder, Vec2,
 };
 use rodio::buffer::SamplesBuffer;
-use rodio::{Decoder, OutputStreamHandle, Sink, Source};
+use rodio::{Decoder, Sink, Source};
 use std::io::{Cursor, Read};
 use std::ops::{Add, ControlFlow, Deref, Div, Mul};
 use std::path::PathBuf;
@@ -23,16 +23,16 @@ use std::time::{Duration, Instant};
 use winit::keyboard::{KeyCode, PhysicalKey};
 
 pub struct SongSampleInfo {
-    samples: Vec<i16>,
-    samples_q: Vec<i16>,
-    samples_half: Vec<i16>,
-    samples_t_f: Vec<i16>,
+    samples: Vec<f32>,
+    samples_q: Vec<f32>,
+    samples_half: Vec<f32>,
+    samples_t_f: Vec<f32>,
     sample_rate: u32,
     channels: u16,
 }
 
 impl SongSampleInfo {
-    pub fn new(samples: Vec<i16>, rate: u32, channels: u16) -> Self {
+    pub fn new(samples: Vec<f32>, rate: u32, channels: u16) -> Self {
         use rayon::prelude::*;
         let result = [0.25, 0.5, 0.75]
             .into_par_iter()
@@ -113,7 +113,7 @@ impl BeatMapEditor {
         info: Option<SongBeatmapInfo>,
         s: OutputStreamHandle,
     ) -> anyhow::Result<Self> {
-        let sink = Sink::try_new(&s).expect("Failed to new sink");
+        let sink = Sink::connect_new(&s);
 
         let mut buf = vec![];
         let mut file = std::fs::File::open(&song_info.bgm_file)?;
@@ -122,7 +122,7 @@ impl BeatMapEditor {
         let buf = Cursor::new(buf);
         let decoder = Decoder::new(buf.clone())?;
 
-        let samples = decoder.convert_samples::<f32>();
+        let samples = decoder;
 
         let total_duration = samples
             .total_duration()
@@ -144,7 +144,7 @@ impl BeatMapEditor {
 
             let sample_rate = decoder.sample_rate();
             let channels = decoder.channels();
-            let samples = decoder.convert_samples::<i16>().collect();
+            let samples = decoder.collect();
             SongSampleInfo::new(samples, sample_rate, channels)
         };
 
@@ -575,8 +575,8 @@ impl BeatMapEditor {
                         for j in 0..self.sample_info.channels as usize {
                             let cur = self.sample_info.samples
                                 [sample_idx * self.sample_info.channels as usize + j];
-                            mn = mn.min(cur);
-                            mx = mx.max(cur);
+                            mn = mn.min((cur * i16::MAX as f32) as i16);
+                            mx = mx.max((cur * i16::MAX as f32) as i16);
                         }
 
                         let offset = sample_idx;

@@ -58,7 +58,7 @@ impl GameState for InitState {
                 let res = res;
 
                 let audio = Decoder::new(Cursor::new(res.load_asset("sfx/tick.wav").unwrap())).unwrap();
-                let audio = SamplesBuffer::new(audio.channels(), audio.sample_rate(), audio.convert_samples::<f32>().collect::<Vec<f32>>());
+                let audio = SamplesBuffer::new(audio.channels(), audio.sample_rate(), audio.collect::<Vec<f32>>());
                 
                 let task = async move {
                     if !INITED.load(Ordering::Acquire) {
