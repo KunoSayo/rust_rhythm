@@ -657,7 +657,7 @@ impl BeatMapEditor {
         let height = 50.0;
         egui::TopBottomPanel::new(TopBottomSide::Bottom, "audio")
             .min_height(height)
-            .frame(Frame::none())
+            .frame(Frame::NONE)
             .show(ctx, |ui| {
                 let width = ui.available_width();
 

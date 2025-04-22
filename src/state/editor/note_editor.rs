@@ -321,11 +321,11 @@ impl BeatMapEditor {
             let note_end_center_ui_y = self.time_map_ui_y(et as f32 / 1000.0, game_rect);
 
             Rect::from_min_max(
-                Pos2::new(note_ui_left_x, note_end_center_ui_y - NOTE_HEIGHT_PIXEL * 0.5),
                 Pos2::new(
-                    note_ui_right_x,
-                    note_center_ui_y + NOTE_HEIGHT_PIXEL * 0.5,
+                    note_ui_left_x,
+                    note_end_center_ui_y - NOTE_HEIGHT_PIXEL * 0.5,
                 ),
+                Pos2::new(note_ui_right_x, note_center_ui_y + NOTE_HEIGHT_PIXEL * 0.5),
             )
         } else {
             Rect::from_min_max(
@@ -792,11 +792,14 @@ impl BeatMapEditor {
                 ui.set_clip_rect(rect);
 
                 // Render timing group && current time line
-                for x in self.get_beat_iter(
-                    self.input_cache.current_duration.as_secs_f32()
-                        - self.input_cache.progress_half_time
-                        - 1.0,
-                ) {
+                for x in self
+                    .get_beat_iter(
+                        self.input_cache.current_duration.as_secs_f32()
+                            - self.input_cache.progress_half_time
+                            - 1.0,
+                    )
+                    .take((rect.width().ceil() as usize).min(10000))
+                {
                     if x.time as f32 / 1000.0
                         > self.input_cache.current_duration.as_secs_f32()
                             + self.input_cache.progress_half_time
