@@ -14,7 +14,7 @@ use egui::panel::Side;
 use egui::{Color32, Frame, Pos2, Rect, Stroke, StrokeKind, Ui, Vec2};
 use num::Signed;
 use std::collections::{BTreeMap, VecDeque};
-use std::ops::DerefMut;
+use std::ops::{DerefMut, Mul};
 use winit::dpi::PhysicalPosition;
 use winit::keyboard::{KeyCode, PhysicalKey};
 
@@ -675,6 +675,7 @@ impl BeatMapEditor {
         let tr = s.app.world.fetch::<TextureRenderer>();
         let mut nr = s.app.world.fetch_mut::<NoteRenderer>();
 
+        let game_rect = game_rect.mul(ui.pixels_per_point());
         nr.render(
             s.app.gpu.as_ref().unwrap(),
             s.app.render.as_mut().unwrap(),
