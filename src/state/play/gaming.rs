@@ -254,6 +254,9 @@ impl GameState for GamingState {
         egui::CentralPanel::default()
             .frame(Frame::NONE)
             .show(ctx, |ui| {
+                
+                let whole_rect = ui.available_rect_before_wrap();
+                let game_rect = get_play_rect(whole_rect);
                 ui.with_layout(Layout::right_to_left(Align::TOP), |ui| {
                     let score = self
                         .score_display
@@ -273,7 +276,7 @@ impl GameState for GamingState {
                 // the center line
                 ui.painter().hline(
                     ui.max_rect().x_range(),
-                    self.game_rect.center().y,
+                    game_rect.center().y,
                     Stroke::new(5.0, Color32::GRAY),
                 );
 
