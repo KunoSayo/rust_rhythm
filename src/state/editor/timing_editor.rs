@@ -1,4 +1,6 @@
-use crate::engine::{optional_edit, StateData};
+use std::num::NonZeroU8;
+use std::str::FromStr;
+use crate::engine::{edit_dyn_data, optional_edit, StateData};
 use crate::game::timing::{Bpm, Timing};
 use crate::game::OffsetType;
 use crate::state::editor::editor::{format_ms, BeatMapEditor};
@@ -92,17 +94,29 @@ impl BeatMapEditor {
                             .timing_group
                             .get_timing_by_idx(self.input_cache.select_timing_group, selected_row)
                         {
+                            let mut timing_dirty = false;
+                            
+                            ui.label("TIME SIGNATURE");
+                            const TS_ID: &'static str = "TIME SIGNATURE";
+                            
+                            if let Some(result) = edit_dyn_data(ui, TS_ID, tl.time_signature.to_string()) {
+                                if let Ok(result) = NonZeroU8::from_str(&result) {
+                                    tl.time_signature = result;
+                                    timing_dirty |= true;
+                                }
+                            }
+                            ui.separator();
                             ui.label("BPM: ");
 
                             const ID: &'static str = "BPM_EDIT";
 
-                            let mut timing_dirty = false;
                             timing_dirty |= optional_edit(ui, ID, "Set BPM", &mut tl.set_bpm, Bpm::default());
 
                             ui.separator();
                             const SET_SPEED: &'static str = "Set Speed";
                             timing_dirty |= optional_edit(ui, SET_SPEED, SET_SPEED, &mut tl.set_speed, 1.0);
                             tl.set_speed = tl.set_speed.map(|x| x.clamp(0.01, 10.0));
+                            
                             
                             if timing_dirty {
                                 self.beatmap.timing_group.timing_lines[self.input_cache.select_timing_group].update();

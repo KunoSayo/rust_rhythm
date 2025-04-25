@@ -157,6 +157,8 @@ impl UiThreadTextEditCache {
 }
 
 /// Edit the text and return the edit result if end edit.
+/// 
+/// Return the commited string if changed.
 pub fn edit_dyn_data(ui: &mut Ui, id: &'static str, mut data_str: String) -> Option<String> {
     let mut cache = get_edit_cache();
 
