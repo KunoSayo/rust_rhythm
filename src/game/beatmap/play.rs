@@ -240,7 +240,7 @@ impl PlayingNoteType<'_> {
 
     fn is_not_started(&self) -> bool {
         match self {
-            PlayingNoteType::Normal(x) => true,
+            PlayingNoteType::Normal(_) => true,
             PlayingNoteType::Long(x) => x.start_result.is_none(),
         }
     }
@@ -296,6 +296,7 @@ impl<T: Note> TrackNotes<T> {
         ops: &PlayOptions,
         judge_times: &JudgeTimes,
         game_time: GameTimeType,
+        gameplay_y: f32,
         mut callback: impl FnMut(&mut PlayingNote<T>, NoteHitResult),
     ) {
         let offset = secs_to_offset_type(game_time);
@@ -303,6 +304,8 @@ impl<T: Note> TrackNotes<T> {
         // move pending to play area for some lag case.
         while let Some(note) = self.pending.front() {
             if note.note.get_time() <= secs_to_offset_type(game_time + ops.default_view_time as GameTimeType + 1.0)
+                || (note.note_y - gameplay_y).abs() < 2.0
+                || (note.note_end_y - gameplay_y).abs() < 2.0
             {
                 unsafe {
                     // SAFETY: we just got the front.
@@ -355,12 +358,13 @@ pub struct Gaming {
 }
 
 impl Gaming {
-    fn tick_track(
+    fn tick_tracks(
         &mut self,
         game_time: GameTimeType,
         mut callback: Option<impl FnMut(PlayingNoteType, NoteHitResult)>,
     ) {
-        for x in self.normal_notes.iter_mut() {
+        for (x, tl) in self.normal_notes.iter_mut().zip(self.raw_file.timing_group.timing_lines.iter()) {
+            let y = tl.get_y_f32(game_time as f32);
             if self.auto_play {
                 while let Some(note) = x.play_area.front_mut() {
                     let delta = offset_type_to_secs(note.note.time) - game_time;
@@ -377,14 +381,15 @@ impl Gaming {
                     }
                 }
             }
-            x.tick(&self.ops, &self.judge, game_time, |note, result| {
+            x.tick(&self.ops, &self.judge, game_time, y, |note, result| {
                 self.score_counter.accept_result(result);
                 if let Some(cb) = &mut callback {
                     cb(PlayingNoteType::Normal(note), result);
                 }
             });
         }
-        for x in self.long_notes.iter_mut() {
+        for (x, tl) in self.long_notes.iter_mut().zip(self.raw_file.timing_group.timing_lines.iter()) {
+            let y = tl.get_y_f32(game_time as f32);
             if self.auto_play {
                 x.play_area.retain_mut(|note| {
                     let delta = offset_type_to_secs(note.note.start_time) - game_time;
@@ -408,7 +413,7 @@ impl Gaming {
                     true
                 });
             }
-            x.tick(&self.ops, &self.judge, game_time, |note, result| {
+            x.tick(&self.ops, &self.judge, game_time, y, |note, result| {
                 self.score_counter.accept_result(result);
                 if let Some(cb) = &mut callback {
                     cb(PlayingNoteType::Long(note), result);
@@ -489,7 +494,7 @@ impl Gaming {
         game_time: GameTimeType,
         callback: Option<impl FnMut(PlayingNoteType, NoteHitResult)>,
     ) {
-        self.tick_track(game_time, callback);
+        self.tick_tracks(game_time, callback);
     }
 
     /// return the note hit result, and if it is long start.
