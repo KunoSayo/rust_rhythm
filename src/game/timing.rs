@@ -271,7 +271,7 @@ impl TimingLine {
         let mut last_start_y = 0.0;
         let mut last_offset = 0;
         for t in self.timings.iter_mut() {
-            t.start_y = last_start_y + cur_speed * (t.offset - last_offset) as f32;
+            t.start_y = last_start_y + cur_speed * (t.offset - last_offset) as f32 / 1000.0;
             if let Some(bpm) = t.set_bpm {
                 cur_bpm = bpm;
             }

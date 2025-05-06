@@ -274,7 +274,6 @@ impl Note for PlayingNoteType<'_> {
 
 /// Notes in the same timing group
 pub struct TrackNotes<Note> {
-    timings: TimingLine,
     pub play_area: VecDeque<PlayingNote<Note>>,
     pending: VecDeque<PlayingNote<Note>>,
 }
@@ -282,7 +281,6 @@ pub struct TrackNotes<Note> {
 impl<T> Default for TrackNotes<T> {
     fn default() -> Self {
         Self {
-            timings: Default::default(),
             play_area: Default::default(),
             pending: Default::default(),
         }
@@ -467,15 +465,6 @@ impl Gaming {
             ops.default_view_time,
             &mut total_notes,
         );
-
-        for (idx, tl) in file.timing_group.timing_lines.iter().enumerate() {
-            if let Some(n) = normal_notes.get_mut(idx) {
-                n.timings = tl.clone();
-            }
-            if let Some(n) = long_notes.get_mut(idx) {
-                n.timings = tl.clone();
-            }
-        }
 
         Self {
             raw_file: file.clone(),
