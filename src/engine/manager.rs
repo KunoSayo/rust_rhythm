@@ -14,10 +14,10 @@ use std::future::Future;
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::sync::atomic::AtomicBool;
-use std::sync::mpsc::{channel, sync_channel, Receiver, Sender, SyncSender};
+use std::sync::mpsc::{channel, sync_channel, Receiver, Sender, SyncSender, TrySendError};
 use std::task::Poll;
 use std::thread::JoinHandle;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use wgpu::{
     Color, CommandEncoderDescriptor, Extent3d, ImageCopyTexture, LoadOp, Maintain, Operations,
     Origin3d, RenderPassColorAttachment, RenderPassDescriptor, StoreOp, TexelCopyTextureInfo,
@@ -1235,6 +1235,38 @@ impl<T: 'static> Future for RunMainThreadTask<T> {
 }
 
 impl AsyncWindowManager {
+    fn try_send_impl(&mut self, mut msg: LoopMessage, el: &ActiveEventLoop) {
+        loop {
+            match self.sender.try_send(msg) {
+                Ok(()) => {
+                    return;
+                }
+                Err(e) => match e {
+                    TrySendError::Full(data) => {
+                        msg = data;
+                        self.process_recv(el);
+                        // we sleep 10 ms for already full. it doesn't matter if full.
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                    TrySendError::Disconnected(_) => {
+                        el.exit();
+                        return;
+                    }
+                },
+            }
+        }
+    }
+
+    fn process_recv(&mut self, el: &ActiveEventLoop) {
+        while let Ok(msg) = self.rx.try_recv() {
+            match msg {
+                ToLoopMessage::RunTask(task) => {
+                    task(el);
+                }
+            }
+        }
+    }
+
     pub(crate) fn new(
         el: &EventLoop<WinitEventLoopMessage>,
         start: impl GameState + Send,
@@ -1268,17 +1300,13 @@ impl AsyncWindowManager {
 
 impl ApplicationHandler<WinitEventLoopMessage> for AsyncWindowManager {
     fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: StartCause) {
-        if let Err(e) = self.sender.send(LoopMessage::NewLoop(cause)) {
-            event_loop.exit();
-        }
         log::trace!(target: "AWM", "New Event");
         event_loop.set_control_flow(ControlFlow::Wait);
+        self.try_send_impl(LoopMessage::NewLoop(cause), event_loop);
     }
 
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if let Err(e) = self.sender.send(LoopMessage::Resumed) {
-            event_loop.exit();
-        }
+        self.try_send_impl(LoopMessage::Resumed, event_loop);
         log::trace!(target: "AWM", "Resumed");
 
         event_loop.set_control_flow(ControlFlow::Wait);
@@ -1288,18 +1316,10 @@ impl ApplicationHandler<WinitEventLoopMessage> for AsyncWindowManager {
         log::trace!(target: "AWM", "User event");
         match event {
             WinitEventLoopMessage::WakeUp(w) => {
-                if let Err(e) = self.sender.send(LoopMessage::UserEvent(event)) {
-                    event_loop.exit();
-                }
+                self.try_send_impl(LoopMessage::UserEvent(event), event_loop);
             }
             WinitEventLoopMessage::CheckAsyncMsg => {
-                while let Ok(msg) = self.rx.try_recv() {
-                    match msg {
-                        ToLoopMessage::RunTask(task) => {
-                            task(event_loop);
-                        }
-                    }
-                }
+                self.process_recv(event_loop);
             }
         }
         event_loop.set_control_flow(ControlFlow::Wait);
@@ -1321,9 +1341,7 @@ impl ApplicationHandler<WinitEventLoopMessage> for AsyncWindowManager {
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         log::trace!(target: "AWM", "About to wait");
 
-        self.sender
-            .send(LoopMessage::AboutToWait)
-            .inspect_err(|_| event_loop.exit());
+        self.try_send_impl(LoopMessage::AboutToWait, event_loop);
     }
 
     fn suspended(&mut self, event_loop: &ActiveEventLoop) {
