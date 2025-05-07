@@ -496,8 +496,8 @@ impl BeatMapEditor {
         };
 
         if !self.input_cache.edit_data.contains_note(&note_to_place) {
-            if self.allow_update {
-                if s.app.inputs.mouse_state.take_is_clicked() {
+            if s.app.inputs.mouse_state.take_is_clicked() {
+                if self.allow_update {
                     self.input_cache
                         .edit_data
                         .do_cmd_with_record(EditCommand::EditNote(
@@ -507,9 +507,9 @@ impl BeatMapEditor {
                         ));
                     self.dirty = true;
                 }
-                let nr = s.app.world.get_mut::<NoteRenderer>().unwrap();
-                self.collect_background_note(&note_to_place, game_rect, nr);
             }
+            let nr = s.app.world.get_mut::<NoteRenderer>().unwrap();
+            self.collect_background_note(&note_to_place, game_rect, nr);
         }
     }
 
