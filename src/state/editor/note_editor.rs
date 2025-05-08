@@ -636,9 +636,12 @@ impl BeatMapEditor {
                 .input_cache
                 .edit_data
                 .long_notes
-                .range(start_time..=end_time)
+                .range(..=end_time)
             {
                 for note in x.1 {
+                    if note.end_time < start_time {
+                        continue;
+                    }
                     if note.timing_group == self.input_cache.select_timing_group as u8 {
                         desc.get_note_render_obj(
                             viewport_size,
