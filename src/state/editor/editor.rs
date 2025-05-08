@@ -1,5 +1,7 @@
 use crate::engine::global::{IO_POOL, STATIC_DATA};
-use crate::engine::{get_edit_cache, sample_change_speed, GameState, LoopState, OutputStreamHandle, StateData, Trans};
+use crate::engine::{
+    get_edit_cache, sample_change_speed, GameState, LoopState, OutputStreamHandle, StateData, Trans,
+};
 use crate::game::beatmap::file::SongBeatmapFile;
 use crate::game::beatmap::{SongBeatmapInfo, BEATMAP_EXT};
 use crate::game::song::{SongInfo, SongManagerResourceType};
@@ -146,7 +148,6 @@ impl BeatMapEditor {
             let samples = decoder.collect();
             SongSampleInfo::new(samples, sample_rate, channels)
         };
-        
 
         let dirty = info.is_none();
         let current_editor = SubEditor::Timing;
@@ -213,10 +214,11 @@ impl BeatMapEditor {
                 .deref()
                 .clone();
         // IO_POOL.spawn_ok(async move {
-        match beatmap.save_to(&path) { Err(e) => {
-            log::error!("Failed to save beatmap for {:?}", e);
-        } _ => {
-            match info.reload() {
+        match beatmap.save_to(&path) {
+            Err(e) => {
+                log::error!("Failed to save beatmap for {:?}", e);
+            }
+            _ => match info.reload() {
                 Ok(new_info) => {
                     song_manager.load_new_info(new_info);
                     info.dirty.store(true, Ordering::Release);
@@ -225,8 +227,8 @@ impl BeatMapEditor {
                 Err(e) => {
                     log::error!("Failed to load beatmap for {:?}", e);
                 }
-            }
-        }}
+            },
+        }
         // });
     }
 }
@@ -347,6 +349,9 @@ impl GameState for BeatMapEditor {
         ));
 
         self.allow_update = false;
+        if !self.sink.is_paused() {
+            s.app.window.request_redraw();
+        }
         tran
     }
 
@@ -561,7 +566,8 @@ impl BeatMapEditor {
 
                 let right_sample_idx = right_sample_idx.at_most(
                     (self.total_duration.as_secs_f32() * self.sample_info.sample_rate as f32)
-                        as usize - 1,
+                        as usize
+                        - 1,
                 );
 
                 use rayon::prelude::*;
@@ -730,8 +736,13 @@ impl BeatMapEditor {
                         let left_center = (progress_start, y_center);
                         let right_center = (progress_end, y_center);
 
-                        for x in self.beatmap.timing_group.get_timing(self.input_cache.select_timing_group, 0) {
-                            let progress = offset_type_to_secs(x.offset) / self.total_duration.as_secs_f64();
+                        for x in self
+                            .beatmap
+                            .timing_group
+                            .get_timing(self.input_cache.select_timing_group, 0)
+                        {
+                            let progress =
+                                offset_type_to_secs(x.offset) / self.total_duration.as_secs_f64();
                             let progress = progress as f32;
 
                             if x.set_bpm.is_some() {
