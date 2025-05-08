@@ -884,8 +884,9 @@ impl WindowManager {
         }
         if self.all_events == self.draw_events {
             // not update.
-            log::trace!(target:"winit_event", "Skip update due to only redraw event.");
-            return;
+            // log::trace!(target:"winit_event", "Skip update due to only redraw event.");
+            // return;
+
         } else {
             log::trace!(target:"winit_event", "Update event");
         }
